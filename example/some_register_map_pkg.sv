@@ -130,19 +130,6 @@ package some_register_map_pkg;
     } fifoRfile__in_t;
 
     typedef struct {
-        logic incr;
-    } count_field_reset_0_w31__in_t;
-
-    typedef struct {
-        logic next;
-    } vc_pkt_count_reg__active_reset_1__in_t;
-
-    typedef struct {
-        count_field_reset_0_w31__in_t vc_count;
-        vc_pkt_count_reg__active_reset_1__in_t active;
-    } vc_pkt_count_reg__in_t;
-
-    typedef struct {
         logic rd_ack;
         logic [31:0] rd_data;
         logic wr_ack;
@@ -155,7 +142,6 @@ package some_register_map_pkg;
         spi4_pkt_count_reg__in_t spi4_pkt_count;
         gige_pkt_count_reg__in_t gige_pkt_count_reg;
         fifoRfile__in_t fifo_port[8];
-        vc_pkt_count_reg__in_t vc_pkt_count[8][2];
         some_register_map__empty_addrmap__external__in_t empty_addrmap;
     } some_register_map__in_t;
 
@@ -277,19 +263,6 @@ package some_register_map_pkg;
     } fifoRfile__out_t;
 
     typedef struct {
-        logic [30:0] value;
-    } count_field_reset_0_w31__out_t;
-
-    typedef struct {
-        logic value;
-    } vc_pkt_count_reg__active_reset_1__out_t;
-
-    typedef struct {
-        count_field_reset_0_w31__out_t vc_count;
-        vc_pkt_count_reg__active_reset_1__out_t active;
-    } vc_pkt_count_reg__out_t;
-
-    typedef struct {
         logic req;
         logic [1:0] addr;
         logic req_is_wr;
@@ -304,7 +277,6 @@ package some_register_map_pkg;
         spi4_pkt_count_reg__out_t spi4_pkt_count;
         gige_pkt_count_reg__out_t gige_pkt_count_reg;
         fifoRfile__out_t fifo_port[8];
-        vc_pkt_count_reg__out_t vc_pkt_count[8][2];
         some_register_map__empty_addrmap__external__out_t empty_addrmap;
     } some_register_map__out_t;
 

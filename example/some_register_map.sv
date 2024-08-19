@@ -255,7 +255,6 @@ module some_register_map (
             logic tail;
             logic status;
         } fifo_port[8];
-        logic vc_pkt_count[8][2];
         logic empty_addrmap;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
@@ -281,11 +280,6 @@ module some_register_map (
             decoded_reg_strb.fifo_port[i0].head = cpuif_req_masked & (cpuif_addr == 14'h100 + i0*14'h10);
             decoded_reg_strb.fifo_port[i0].tail = cpuif_req_masked & (cpuif_addr == 14'h104 + i0*14'h10);
             decoded_reg_strb.fifo_port[i0].status = cpuif_req_masked & (cpuif_addr == 14'h108 + i0*14'h10);
-        end
-        for(int i0=0; i0<8; i0++) begin
-            for(int i1=0; i1<2; i1++) begin
-                decoded_reg_strb.vc_pkt_count[i0][i1] = cpuif_req_masked & (cpuif_addr == 14'h1000 + i0*14'h8 + i1*14'h4);
-            end
         end
         decoded_reg_strb.empty_addrmap = cpuif_req_masked & (cpuif_addr >= 14'h2000) & (cpuif_addr <= 14'h2000 + 14'h3);
         is_external |= cpuif_req_masked & (cpuif_addr >= 14'h2000) & (cpuif_addr <= 14'h2000 + 14'h3);
@@ -461,18 +455,6 @@ module some_register_map (
                 } almost_full;
             } status;
         } fifo_port[8];
-        struct {
-            struct {
-                logic [30:0] next;
-                logic load_next;
-                logic incrthreshold;
-                logic overflow;
-            } vc_count;
-            struct {
-                logic next;
-                logic load_next;
-            } active;
-        } vc_pkt_count[8][2];
     } field_combo_t;
     field_combo_t field_combo;
 
@@ -589,14 +571,6 @@ module some_register_map (
                 } almost_full;
             } status;
         } fifo_port[8];
-        struct {
-            struct {
-                logic [30:0] value;
-            } vc_count;
-            struct {
-                logic value;
-            } active;
-        } vc_pkt_count[8][2];
     } field_storage_t;
     field_storage_t field_storage;
 
@@ -1447,66 +1421,6 @@ module some_register_map (
         end
         assign hwif_out.fifo_port[i0].status.almost_full.value = field_storage.fifo_port[i0].status.almost_full.value;
     end
-    for(genvar i0=0; i0<8; i0++) begin
-        for(genvar i1=0; i1<2; i1++) begin
-            // Field: some_register_map.vc_pkt_count[][].vc_count
-            always_comb begin
-                automatic logic [30:0] next_c;
-                automatic logic load_next_c;
-                next_c = field_storage.vc_pkt_count[i0][i1].vc_count.value;
-                load_next_c = '0;
-                if(decoded_reg_strb.vc_pkt_count[i0][i1] && !decoded_req_is_wr) begin // SW clear on read
-                    next_c = '0;
-                    load_next_c = '1;
-                end else if(decoded_reg_strb.vc_pkt_count[i0][i1] && decoded_req_is_wr) begin // SW write
-                    next_c = (field_storage.vc_pkt_count[i0][i1].vc_count.value & ~decoded_wr_biten[30:0]) | (decoded_wr_data[30:0] & decoded_wr_biten[30:0]);
-                    load_next_c = '1;
-                end
-                if(hwif_in.vc_pkt_count[i0][i1].vc_count.incr) begin // increment
-                    field_combo.vc_pkt_count[i0][i1].vc_count.overflow = (((32)'(next_c) + 31'h1) > 31'h7fffffff);
-                    next_c = next_c + 31'h1;
-                    load_next_c = '1;
-                end else begin
-                    field_combo.vc_pkt_count[i0][i1].vc_count.overflow = '0;
-                end
-                field_combo.vc_pkt_count[i0][i1].vc_count.incrthreshold = (field_storage.vc_pkt_count[i0][i1].vc_count.value >= 31'h7fffffff);
-                field_combo.vc_pkt_count[i0][i1].vc_count.next = next_c;
-                field_combo.vc_pkt_count[i0][i1].vc_count.load_next = load_next_c;
-            end
-            always_ff @(posedge clk) begin
-                if(rst) begin
-                    field_storage.vc_pkt_count[i0][i1].vc_count.value <= 31'h0;
-                end else if(field_combo.vc_pkt_count[i0][i1].vc_count.load_next) begin
-                    field_storage.vc_pkt_count[i0][i1].vc_count.value <= field_combo.vc_pkt_count[i0][i1].vc_count.next;
-                end
-            end
-            assign hwif_out.vc_pkt_count[i0][i1].vc_count.value = field_storage.vc_pkt_count[i0][i1].vc_count.value;
-            // Field: some_register_map.vc_pkt_count[][].active
-            always_comb begin
-                automatic logic [0:0] next_c;
-                automatic logic load_next_c;
-                next_c = field_storage.vc_pkt_count[i0][i1].active.value;
-                load_next_c = '0;
-                if(decoded_reg_strb.vc_pkt_count[i0][i1] && decoded_req_is_wr) begin // SW write
-                    next_c = (field_storage.vc_pkt_count[i0][i1].active.value & ~decoded_wr_biten[31:31]) | (decoded_wr_data[31:31] & decoded_wr_biten[31:31]);
-                    load_next_c = '1;
-                end else if(hwif_in.vc_pkt_count[i0][i1].active.next != '0) begin // stickybit
-                    next_c = field_storage.vc_pkt_count[i0][i1].active.value | hwif_in.vc_pkt_count[i0][i1].active.next;
-                    load_next_c = '1;
-                end
-                field_combo.vc_pkt_count[i0][i1].active.next = next_c;
-                field_combo.vc_pkt_count[i0][i1].active.load_next = load_next_c;
-            end
-            always_ff @(posedge clk) begin
-                if(rst) begin
-                    field_storage.vc_pkt_count[i0][i1].active.value <= 1'h1;
-                end else if(field_combo.vc_pkt_count[i0][i1].active.load_next) begin
-                    field_storage.vc_pkt_count[i0][i1].active.value <= field_combo.vc_pkt_count[i0][i1].active.next;
-                end
-            end
-            assign hwif_out.vc_pkt_count[i0][i1].active.value = field_storage.vc_pkt_count[i0][i1].active.value;
-        end
-    end
     assign hwif_out.empty_addrmap.req = decoded_reg_strb.empty_addrmap;
     assign hwif_out.empty_addrmap.addr = decoded_addr[2:0];
     assign hwif_out.empty_addrmap.req_is_wr = decoded_req_is_wr;
@@ -1547,7 +1461,7 @@ module some_register_map (
     logic [31:0] readback_data;
 
     // Assign readback values to a flattened array
-    logic [31:0] readback_array[46];
+    logic [31:0] readback_array[30];
     assign readback_array[0] = hwif_in.chip_id_reg.rd_ack ? hwif_in.chip_id_reg.rd_data : '0;
     assign readback_array[1][3:0] = (decoded_reg_strb.link_status && !decoded_req_is_wr) ? field_storage.link_status.port0.value : '0;
     assign readback_array[1][7:4] = (decoded_reg_strb.link_status && !decoded_req_is_wr) ? field_storage.link_status.port1.value : '0;
@@ -1586,13 +1500,7 @@ module some_register_map (
         assign readback_array[i0*3 + 7][5:5] = (decoded_reg_strb.fifo_port[i0].status && !decoded_req_is_wr) ? field_storage.fifo_port[i0].status.almost_full.value : '0;
         assign readback_array[i0*3 + 7][31:6] = '0;
     end
-    for(genvar i0=0; i0<8; i0++) begin
-        for(genvar i1=0; i1<2; i1++) begin
-            assign readback_array[i0*2 + i1*1 + 29][30:0] = (decoded_reg_strb.vc_pkt_count[i0][i1] && !decoded_req_is_wr) ? field_storage.vc_pkt_count[i0][i1].vc_count.value : '0;
-            assign readback_array[i0*2 + i1*1 + 29][31:31] = (decoded_reg_strb.vc_pkt_count[i0][i1] && !decoded_req_is_wr) ? field_storage.vc_pkt_count[i0][i1].active.value : '0;
-        end
-    end
-    assign readback_array[45] = hwif_in.empty_addrmap.rd_ack ? hwif_in.empty_addrmap.rd_data : '0;
+    assign readback_array[29] = hwif_in.empty_addrmap.rd_ack ? hwif_in.empty_addrmap.rd_data : '0;
 
     // Reduce the array
     always_comb begin
@@ -1600,7 +1508,7 @@ module some_register_map (
         readback_done = decoded_req & ~decoded_req_is_wr & ~decoded_strb_is_external;
         readback_err = '0;
         readback_data_var = '0;
-        for(int i=0; i<46; i++) readback_data_var |= readback_array[i];
+        for(int i=0; i<30; i++) readback_data_var |= readback_array[i];
         readback_data = readback_data_var;
     end
 
