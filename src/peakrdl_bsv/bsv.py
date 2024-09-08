@@ -10,35 +10,56 @@ from systemrdl.node import FieldNode, RegNode, AddressableNode
 
 
 class PrintReg(RDLListener):
-    def __init__(self,file):
+    def __init__(self,bsvfile):
         self.indent = 0
-        self.file=file
+        self.file=bsvfile
+        self.field_count=0
 
     def isPrintable(self):
         raise NotImplementedError
 
     def enter_Reg(self, node):
-        print("\t"*self.indent, "typedef struct {",file=self.file)
+        self.reg_st+="\t"*self.indent+ "typedef struct {"
         self.indent += 1
 
     def enter_Field(self, node):
-        # Print some stuff about the field
+        name=node.get_path_segment()
         bsv_type = ''
-        if node.high == node.low:
-            bsv_type = "Bool"
-        else:
-            bsv_type = f"Bit#({node.high-node.low +1})"
-        if self.isPrintable(node):
-            print(self.indent*'\t', f"{bsv_type} {node.get_path_segment()};",file=self.file)
+        #if node.high == node.low:
+        #    bsv_type = "Bool"
+        #else:
+        #    bsv_type = f"Bit#({node.width})"
+        bsv_type = f"Bit#({node.width})"
+        ext_f=[]
+        for ext in self.ext:
+            if ext in node.inst.properties:
+                ext_f.append(f'Bit#(1) {ext};')
+        ext_joined='\n'.join(ext_f)
+
+        if self.isPrintable(node) or len(ext_f)>0:
+            self.reg_st+=f"{name.upper()}{self.field_count}_{self.suffix}_st {name};\n"
+            self.field_st+='typedef struct {'
+            if self.isPrintable(node):
+                self.field_st+=self.indent*'\t'+ f"{bsv_type} {name};\n"
+                self.field_st+=f"{ext_joined}"
+            self.field_st+= '}'+name.upper()+f"{self.field_count}_{self.suffix}_st deriving(Bits, Eq, FShow) ;\n"
+        sys.stderr.write(f"{name}: {self.field_st} \n")
+        self.field_count+=1
 
     def exit_Reg(self, node):
-        print("\t"*self.indent, "}",
-              f"{node.get_path_segment()}_{self.suffix}_st deriving(Bits, Eq, FShow) ;" ,file=self.file)
+        name=node.get_path_segment()
+        self.reg_st+="\t"*self.indent+ "}"+ f"{name}_{self.suffix}_st deriving(Bits, Eq, FShow) ;"
         self.indent -= 1
 
+    def enter_Addrmap(self, node):
+        self.field_st=''
+        self.reg_st=''
     def exit_Addrmap(self, node):
         glb_has_printable = []
-        st = "typedef struct {\n"
+        st = f'''
+        {self.field_st}
+        {self.reg_st}
+        '''+"typedef struct {\n"
         for reg in node.registers():
             hasPrintable = [self.isPrintable(x) for x in reg.fields()]
             if (any(hasPrintable)):
@@ -52,6 +73,7 @@ class PrintReg(RDLListener):
 class PrintWriteReg(PrintReg):
     def __init__(self,file):
         self.suffix = "Write"
+        self.ext=[]
         super().__init__(file)
 
     def isPrintable(self, node):
@@ -61,10 +83,13 @@ class PrintWriteReg(PrintReg):
 class PrintReadReg(PrintReg):
     def __init__(self,file):
         self.suffix = "Read"
+        self.ext=['singlepulse','swacc','swmod','anded','ored','xored']
         super().__init__(file)
 
     def isPrintable(self, node):
         return node.is_hw_readable
+
+
 
 
 if __name__ == "__main__":
@@ -77,7 +102,6 @@ if __name__ == "__main__":
     except:
         sys.exit(1)
     walker = RDLWalker(unroll=True)
-    listener = PrintReadReg()
-    walker.walk(root, listener)
-    listener = PrintWriteReg()
-    walker.walk(root, listener)
+    with open("bsv_test.bsv",'w') as of:
+        walker.walk(root, PrintReadReg(of))
+        walker.walk(root, PrintWriteReg(of))

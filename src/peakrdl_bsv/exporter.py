@@ -26,6 +26,9 @@ from systemrdl.node import (  # type: ignore
 
 from systemrdl import RDLCompiler, RDLCompileError, RDLWalker
 from .bsv import PrintReadReg, PrintWriteReg
+from .verilog import PrintVerilog
+from .bsvinfo import PrintBSVInfo
+from .newbsv import PrintBSV
 
 
 class BSVExporter:  # pylint: disable=too-few-public-methods
@@ -46,9 +49,13 @@ class BSVExporter:  # pylint: disable=too-few-public-methods
                 root=rdlc.elaborate()
         except:
             sys.exit()
-        with open(f"{outputpath}/{top_node.inst.inst_name}.bsv",'w') as file:
+        fname=f"{outputpath}/{top_node.inst.inst_name}"
+        with open(fname+'.bsv','w') as file:
             walker=RDLWalker(unroll=True)
-            listener=PrintReadReg(file)
-            walker.walk(root,listener)
-            listener=PrintWriteReg(file)
-            walker.walk(root,listener)
+            walker.walk(root,PrintReadReg(file))
+            walker.walk(root,PrintWriteReg(file))
+            walker.walk(root,PrintBSV(file))
+        with open(fname+".v",'w') as vfile:
+            walker.walk(root,PrintVerilog(vfile))
+        with open(fname+".vinfo",'w') as bsvfile:
+            walker.walk(root,PrintBSVInfo(bsvfile))

@@ -17,7 +17,7 @@ readme = "README.md"
 packages = [{ include = "peakrdl_bsv", from = "src" }]
 
 [tool.poetry.dependencies]
-python = "^3.6.0"
+python = "^3.10.0"
 systemrdl-compiler = "^1.25.0"
 peakrdl = "^1.1.0"
 py-markdown-table = "^0.3.3"
@@ -88,7 +88,7 @@ maintainers = [
     {name = "vijayvithal jahagirdar", email = "jahagirdar.vs@gmail.com"},
 ]
 license = {text = "BSD2-only"}
-requires-python = "<4.0.0,>=3.6.0"
+requires-python = "<4.0.0,>=3.8.0"
 dependencies = [
     "systemrdl-compiler<2.0.0,>=1.25.0",
     "peakrdl<2.0.0,>=1.1.0",
