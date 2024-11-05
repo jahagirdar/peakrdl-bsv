@@ -19,7 +19,7 @@ class PrintReg(RDLListener):
         raise NotImplementedError
 
     def enter_Reg(self, node):
-        self.reg_st+="\t"*self.indent+ "typedef struct {"
+        self.reg_st+="\t"*self.indent+ "typedef struct {\n"
         self.indent += 1
 
     def enter_Field(self, node):
@@ -38,17 +38,17 @@ class PrintReg(RDLListener):
 
         if self.isPrintable(node) or len(ext_f)>0:
             self.reg_st+=f"{name.upper()}{self.field_count}_{self.suffix}_st {name};\n"
-            self.field_st+='typedef struct {'
+            self.field_st+='\n\ntypedef struct {\n'
             if self.isPrintable(node):
-                self.field_st+=self.indent*'\t'+ f"{bsv_type} {name};\n"
+                self.field_st+=self.indent*'\t'+ f"{bsv_type} {self.value};\n"
                 self.field_st+=f"{ext_joined}"
             self.field_st+= '}'+name.upper()+f"{self.field_count}_{self.suffix}_st deriving(Bits, Eq, FShow) ;\n"
-        sys.stderr.write(f"{name}: {self.field_st} \n")
+        # sys.stderr.write(f"{name}: {self.field_st} \n")
         self.field_count+=1
 
     def exit_Reg(self, node):
         name=node.get_path_segment()
-        self.reg_st+="\t"*self.indent+ "}"+ f"{name}_{self.suffix}_st deriving(Bits, Eq, FShow) ;"
+        self.reg_st+="\t"*self.indent+ "}"+ f"{name}_{self.suffix}_st deriving(Bits, Eq, FShow) ;\n"
         self.indent -= 1
 
     def enter_Addrmap(self, node):
@@ -59,7 +59,7 @@ class PrintReg(RDLListener):
         st = f'''
         {self.field_st}
         {self.reg_st}
-        '''+"typedef struct {\n"
+        '''+"\n\ntypedef struct {\n"
         for reg in node.registers():
             hasPrintable = [self.isPrintable(x) for x in reg.fields()]
             if (any(hasPrintable)):
@@ -73,6 +73,7 @@ class PrintReg(RDLListener):
 class PrintWriteReg(PrintReg):
     def __init__(self,file):
         self.suffix = "Write"
+        self.value='next'
         self.ext=[]
         super().__init__(file)
 
@@ -83,8 +84,10 @@ class PrintWriteReg(PrintReg):
 class PrintReadReg(PrintReg):
     def __init__(self,file):
         self.suffix = "Read"
+        self.value='value'
         self.ext=['singlepulse','swacc','swmod','anded','ored','xored']
         super().__init__(file)
+
 
     def isPrintable(self, node):
         return node.is_hw_readable

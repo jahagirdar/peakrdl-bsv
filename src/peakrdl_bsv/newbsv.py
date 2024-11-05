@@ -10,36 +10,49 @@ class PrintBSV(RDLListener):
         name=node.get_path_segment()
         self.module_name=name
         self.ifc=f'''
+import AXI4_Lite_Types::*;
+import Semi_FIFOF :: *;
 interface Ifc_{name}_CSR#(numeric type awidth,numeric type dwidth);
-method Action write(Bit#(awidth) address,Bit#(dwidth) data);
-method ActionValue#(Bit#(dwidth)) read (Bit#(awidth) address);
+interface AXI4_Lite_Slave_IFC#(awidth,dwidth,0) csr_axi4; 
+(*always_ready,always_enabled*)
 method {name}_Read hwif_read();
+(*always_ready,always_enabled*)
 method Action hwif_write({name}_Write wdata);
 endinterface
         '''
 
         self.dwidth=next(node.registers()).inst.properties['regwidth']
-        self.m=f'''module mk{name}_CSR(Ifc_{name}_CSR#(awidth,{self.dwidth}));\n
-Wire#({name}_Read) hwif_r <-mkWire();
+        self.m=f'''module mk{name}_CSR(Ifc_{name}_CSR#(awidth,{self.dwidth}));
+        AXI4_Lite_Slave_Xactor_IFC#(awidth,{self.dwidth},0)  csr_axi <- mkAXI4_Lite_Slave_Xactor();
+Wire#({name}_Read) hwif_r <-mkDWire(unpack(0));
 Wire#({name}_Write) hwif_w <-mkWire();
 Wire#(Bool) wtxn <- mkDWire(False);
 Wire#(Bool) rtxn <- mkDWire(False);
 Wire#(Bit#({self.dwidth})) rdata <-mkWire();
 Wire#(Bit#({self.dwidth})) wdata <-mkWire();
-Wire#(Bit#(awidth)) txn_address <-mkWire();
+Wire#(Bit#(awidth)) txn_address <-mkDWire(0);
 '''
-        self.rule=f'rule rl_{name};\n let hwif_r_var =hwif_r;\n'
+        self.rule=f'''
+        rule rl_write;
+        let addr=csr_axi.o_wr_addr.first();
+        let data=csr_axi.o_wr_data.first();
+        txn_address <= addr.awaddr;
+        wdata <= data.wdata;
+        wtxn <=True;
+        endrule
+        rule rl_read;
+        let addr=csr_axi.o_rd_addr.first();
+        txn_address <= addr.araddr;
+        rtxn <=True;
+        endrule
+rule rl_{name};
+    
+    let hwif_r_var =unpack(0);
+    Bit#({self.dwidth}) rdata_var=0;
+        '''
         self.actions=f'''
-method Action write(Bit#(awidth) address,Bit#({self.dwidth}) data);
-     txn_address <=address;
-     wdata<=data;
-     wtxn<=True;
- endmethod
-method  ActionValue#(Bit#({self.dwidth}) ) read(Bit#(awidth) address);
-     txn_address <=address;
-     rtxn<=True;
-     return rdata;
- endmethod
+interface AXI4_Lite_Slave_IFC csr_axi4=csr_axi.axi_side; 
+
 method {name}_Read hwif_read();
     return hwif_r;
 endmethod
@@ -105,16 +118,26 @@ endmethod
         // TODO HWENABLE,HWMask,hwset,hwclr,we,wel
 
         Bit#({node.width}) {var}={name};
-        if({name}_rclr||{name}_woclr) {var}=0;
-        if({name}_rset||{name}_woset) {var}=1;
-                '''
+        '''
+        if 'rclr' in node.inst.properties or 'woclr' in node.inst.properties:
+            self.rule+=f'if({name}_rclr||{name}_woclr) {var}=0;\n'
+        if 'rset' in node.inst.properties or 'woset' in node.inst.properties:
+            self.rule+=f'if({name}_rset||{name}_woset) {var}=1;'
         ##############
+        if 'rclr' in node.inst.properties:
+            rclr_var=f'{name}_rclr'
+        else:
+            rclr_var='False'
+        if 'rset' in node.inst.properties:
+            rset_var=f'{name}_rset'
+        else:
+            rset_var='False'
         if 'swacc' in node.inst.properties:
           self.rule += f'hwif_r_var.{self.rname}.{signame}.swacc=pack({name}_rtxn || {name}_wtxn);\n'
         if 'swmod' in node.inst.properties:
-            self.rule += f'hwif_r_var.{self.rname}.{signame}.swmod=pack((({name}_rclr || {name}_rset)) || {name}_wtxn);\n'
+            self.rule += f'hwif_r_var.{self.rname}.{signame}.swmod=pack((({rclr_var} || {rset_var})) || {name}_wtxn);\n'
         if 'singlepulse' in node.inst.properties:
-           self.rule+=f'{var}=pack({name}_wtxn && wdata[{node.high} : {node.low}] == 1);\n'
+           self.rule+=f'hwif_r_var.{self.rname}.{signame}.singlepulse=pack({name}_wtxn && wdata[{node.high} : {node.low}] == 1);\n'
         if('anded' in node.inst.properties):
            self.rule+=f'hwif_r_var.{self.rname}.{signame}.anded= & {var};\n'
         if 'ored' in node.inst.properties :
@@ -122,20 +145,31 @@ endmethod
         if('xored' in node.inst.properties):
             self.rule+=f'hwif_r_var.{self.rname}.{signame}.xored= ^ {var};\n'
         if node.is_hw_readable:
-            self.rule+=f'hwif_r_var.{self.rname}.{signame}.{signame}={var};\n'
+            self.rule+=f'hwif_r_var.{self.rname}.{signame}.value={var};\n'
         if node.is_hw_writable:
-            self.rule+=f'{var}=hwif_w.{self.rname}.{signame}.{signame};\n'
+            self.rule+=f'{var}=hwif_w.{self.rname}.{signame}.next;\n'
         if node.is_sw_readable :
-            self.rule+=f'if(rtxn) rdata[{node.high}:{node.low}] <= {var};\n'
+            self.rule+=f'if({name}_rtxn) rdata_var[{node.high}:{node.low}] = {var};\n'
 
         if node.is_sw_writable:
-            self.rule+=f'if(wtxn){var}={sigdata};\n'
-        self.rule +=f'{name}<={var};\n'
+            self.rule+=f'if({name}_wtxn){var}={sigdata};\n'
+        if node.implements_storage:
+            self.rule +=f'{name}<={var};\n '
 
     def exit_Addrmap(self,node):
         name=node.get_path_segment()
         self.rule+='''
         hwif_r<=hwif_r_var\n;
+        //rdata<=rdata_var;
+        if(wtxn)begin
+            csr_axi.o_wr_addr.deq();
+            csr_axi.o_wr_data.deq();
+            csr_axi.i_wr_resp.enq(AXI4_Lite_Wr_Resp{bresp:AXI4_LITE_OKAY,buser:0});
+        end
+        if(rtxn)begin
+            csr_axi.o_rd_addr.deq();
+            csr_axi.i_rd_data.enq(AXI4_Lite_Rd_Data{rresp:AXI4_LITE_EXOKAY,rdata:rdata_var,ruser:0});
+        end
         endrule
         '''
         self.vfile.write(f'{self.ifc} {self.m} {self.rule}\n{self.actions}\nendmodule//{name}\n')
