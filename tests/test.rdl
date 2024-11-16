@@ -1,6 +1,12 @@
 addrmap Foo {
 default regwidth=32;
 reg {
+field {singlepulse;rclr;swacc;swmod;anded;ored;xored;woset;} all0=0;
+field {woclr;rset; }all1;
+field {sw=rw;hw=rw; }all2;
+field {sw=rw;counter; }all3[4];
+} All;
+reg {
 field {sw=rw;hw=r;rclr;} s_rclr[2]=1;
 field {sw=rw;hw=r;rset;} s_rset[2]=0;
 field {sw=rw;hw=r;singlepulse;} s_singlepulse[1]=0;

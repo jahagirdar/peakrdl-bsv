@@ -1,27 +1,58 @@
-# peakrdl-bsv
-Peakrdl plugin for using generated rtl with bluespec.
+# peakrdl-bsv Generating BSV Configuration registers from SystemRDL code.
 
-Peakrdl regblock generated a systemverilog implementation of the register space. This implementation has two ports `hwif_in` and `hwif_out` which contains a hierarchical data structure encapsulating the registers and individial fields in the design.
+Peakrdl plugin for generated bluespec rtl from system RDL file.
 
-This plugin writes the same data structure in BSV format. To use the generated BSV file in your design you can do the following
+This plugin takes an input `file.rdl` and generates three bluespec files
+
+1. `file_signal.bsv` This contains the module definition of each individual signal in the rdl file.
+2. `file_reg.bsv` This groups the signals into their containing register module.
+3. `file_csr.bsv` This creates a module with the registers, address decoding and S/W read write methods.
+
+# Installation and usage
+
+Installing the application
 
 ```
-mkdir out
-peakrdl bsv example/accelera_simplified_example.rdl -o out
+pip3 install peakrdl-bsv
 ```
-This will generate a bsv file `out/some_register_map.bsv`
 
-You can now write the following code in your module
+Generating BSV files from test.rdl
 
 ```
-import some_register_map::*;
-interface Yourmodule_ifc
-(*always_enabled,always_ready*)
-method Action cfg(some_register_map_Read x);
-(*always_enabled,always_ready*)
-method some_register_map_Write status();
-endinterface
-module mkModule(Yourmodule_ifc);
+	peakrdl bsv test.rdl -o .
+```
+
+This can then be used in your design as follows
+
+```
+import file_csr::*;
 ...
-endmodule
+ConfigCSR_file csr <- mkConfigCSR_file;
+
+rule xyz;
+csr.reg.signal.write(...)
+endrule
 ```
+
+The hardware side methods defined on a signal module are
+
+* `method Bool pulse()` returns true when a 1 is written to the signal. self clearing.
+* `method Bool swacc()` returns true when a s/w read or write operation is performed.
+* `method Bool swmod()` returns true when a write or a read with sideeffect operation is performed.
+* `method Bool anded()` Returns an AND reduced value of the signal.
+* `method Bool ored();` Returns an OR reduced value of the signal.
+* `method Bool xored()` Returns an XOR reduced value of the signal.
+* `method Action clear()` Set's the signal to 0.
+* `method Action _write(Bit#(n) data)` writes `data` to the register.
+* `method Bit#(n) _rea` Returns the value of the register.
+
+# Example
+
+To see an example
+
+```
+cd tests
+make
+```
+
+This will generate the required files from the test.rdl file
