@@ -44,7 +44,7 @@ The hardware side methods defined on a signal module are
 * `method Bool xored()` Returns an XOR reduced value of the signal.
 * `method Action clear()` Set's the signal to 0.
 * `method Action _write(Bit#(n) data)` writes `data` to the register.
-* `method Bit#(n) _rea` Returns the value of the register.
+* `method Bit#(n) _read` Returns the value of the register.
 
 # Example
 
