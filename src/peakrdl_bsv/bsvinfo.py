@@ -1,6 +1,8 @@
 from systemrdl import RDLListener
+
+
 class PrintBSVInfo(RDLListener):
-    axi_port='''
+    axi_port = """
 input clk {0 : 0} clock;
 input arst_n {0 : 0} reset;
 output s_axil_awready {0:0} none;
@@ -22,47 +24,77 @@ input  s_axil_rready {0:0} none;
 output s_axil_rvalid {0:0} none;
 output   s_axil_rdata {31:0} none;
 output   s_axil_rresp {1:0} none;
-'''
+"""
 
-    def __init__(self,infofile):
-        self.ifile=infofile
-        self.m=''
-        self.wires=''
-        self.inst=''
+    def __init__(self, infofile):
+        self.ifile = infofile
+        self.m = ""
+        self.wires = ""
+        self.inst = ""
 
-    def enter_Addrmap(self,node):
-        name=node.get_path_segment()
-        self.m=f'module {name}_Reg;\n'+self.axi_port
-        self.inst=f'{name} U{name}(.*);\n'
-    def enter_Reg(self,node):
-        self.rname=node.get_path_segment()
+    def enter_Addrmap(self, node):
+        name = node.get_path_segment()
+        self.m = f"module {name}_Reg;\n" + self.axi_port
+        self.inst = f"{name} U{name}(.*);\n"
 
-    def exit_Addrmap(self,node):
+    def enter_Reg(self, node):
+        self.rname = node.get_path_segment()
+
+    def exit_Addrmap(self, node):
         # name=node.get_path_segment()
-        self.ifile.write(f'{self.m})')
+        self.ifile.write(f"{self.m})")
 
-    def enter_Field(self,node):
-        signame=node.get_path_segment()
+    def enter_Field(self, node):
+        signame = node.get_path_segment()
         if node.is_hw_readable:
-            self.m+= f'output {self.rname}_{signame}_value'+' {%d : %d} none;\n'%(node.high,node.low)
-        if 'swacc' in node.inst.properties:
-            self.m+= f'output {self.rname}_{signame}_swacc'+' {%d : %d} none;\n'%(node.high,node.low)
-        if 'swmod' in node.inst.properties:
-            self.m+= f'output {self.rname}_{signame}_swmod'+' {%d : %d} none;\n'%(node.high,node.low)
-        if 'anded' in node.inst.properties:
-            self.m+= f'output {self.rname}_{signame}_anded'+' {%d : %d} none;\n'%(node.high,node.low)
-        if 'ored' in node.inst.properties:
-            self.m+= f'output {self.rname}_{signame}_ored'+' {%d : %d} none;\n'%(node.high,node.low)
-        if 'xored' in node.inst.properties:
-            self.m+= f'output {self.rname}_{signame}_xored'+' {%d : %d} none;\n'%(node.high,node.low)
-        if 'interrupt' in node.inst.properties:
-            self.m+= f'output {self.rname}_{signame}_intr'+' {%d : %d} none;\n'%(node.high,node.low)
+            self.m += f"output {self.rname}_{signame}_value" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
+        if "swacc" in node.inst.properties:
+            self.m += f"output {self.rname}_{signame}_swacc" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
+        if "swmod" in node.inst.properties:
+            self.m += f"output {self.rname}_{signame}_swmod" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
+        if "anded" in node.inst.properties:
+            self.m += f"output {self.rname}_{signame}_anded" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
+        if "ored" in node.inst.properties:
+            self.m += f"output {self.rname}_{signame}_ored" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
+        if "xored" in node.inst.properties:
+            self.m += f"output {self.rname}_{signame}_xored" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
+        if "interrupt" in node.inst.properties:
+            self.m += f"output {self.rname}_{signame}_intr" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
 
         if node.is_hw_writable:
-            self.m+= f'input {self.rname}_{signame}_next'+' {%d : %d} none;\n'%(node.high,node.low)
+            self.m += f"input {self.rname}_{signame}_next" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
 
-        if 'swwe' in node.inst.properties:
-            self.m+= f'input {self.rname}_{signame}_swwe'+' {%d : %d} none;\n'%(node.high,node.low)
-        if 'swwel' in node.inst.properties:
-            self.m+= f'input {self.rname}_{signame}_swwel'+' {%d : %d} none;\n'%(node.high,node.low)
-
+        if "swwe" in node.inst.properties:
+            self.m += f"input {self.rname}_{signame}_swwe" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )
+        if "swwel" in node.inst.properties:
+            self.m += f"input {self.rname}_{signame}_swwel" + " {%d : %d} none;\n" % (
+                node.high,
+                node.low,
+            )

@@ -4,14 +4,20 @@
 [metadata]
 groups = ["default"]
 strategy = ["cross_platform", "inherit_metadata"]
-lock_version = "4.4.2"
-content_hash = "sha256:8d3077ae0652ebe84d30162fa2c8ffe35f27906c4764fc01827e02a9dfd00257"
+lock_version = "4.5.0"
+content_hash = "sha256:1950fc1fcf5e89a8b2ca8b4620e9e0de6247eb1fc223f556016e539576afaab9"
+
+[[metadata.targets]]
+requires_python = ">=3.10"
 
 [[package]]
 name = "antlr4-python3-runtime"
 version = "4.13.2"
 summary = "ANTLR 4.13.2 runtime for Python 3"
 groups = ["default"]
+dependencies = [
+    "typing; python_version < \"3.5\"",
+]
 files = [
     {file = "antlr4_python3_runtime-4.13.2-py3-none-any.whl", hash = "sha256:fe3835eb8d33daece0e799090eda89719dbccee7aa39ef94eed3818cafa5a7e8"},
     {file = "antlr4_python3_runtime-4.13.2.tar.gz", hash = "sha256:909b647e1d2fc2b70180ac586df3933e38919c85f98ccc656a96cd3f25ef3916"},
@@ -62,25 +68,11 @@ summary = "GitPython is a Python library used to interact with Git repositories"
 groups = ["default"]
 dependencies = [
     "gitdb<5,>=4.0.1",
+    "typing-extensions>=3.7.4.3; python_version < \"3.8\"",
 ]
 files = [
     {file = "GitPython-3.1.43-py3-none-any.whl", hash = "sha256:eec7ec56b92aad751f9912a73404bc02ba212a23adb2c7098ee668417051a1ff"},
     {file = "GitPython-3.1.43.tar.gz", hash = "sha256:35f314a9f878467f5453cc1fee295c3e18e52f1b99f10f6cf5b1682e968a9e7c"},
-]
-
-[[package]]
-name = "importlib-metadata"
-version = "4.8.3"
-requires_python = ">=3.6"
-summary = "Read metadata from Python packages"
-groups = ["default"]
-marker = "python_version < \"3.10\""
-dependencies = [
-    "zipp>=0.5",
-]
-files = [
-    {file = "importlib_metadata-4.8.3-py3-none-any.whl", hash = "sha256:65a9576a5b2d58ca44d133c42a241905cc45e34d2c06fd5ba2bafa221e5d7b5e"},
-    {file = "importlib_metadata-4.8.3.tar.gz", hash = "sha256:766abffff765960fcc18003801f7044eb6755ffae4521c8e8ce8e83b9c9b0668"},
 ]
 
 [[package]]
@@ -288,29 +280,6 @@ files = [
 ]
 
 [[package]]
-name = "py-markdown-table"
-version = "0.4.0"
-requires_python = ">=3.6"
-summary = "Package that generates markdown tables from a list of dicts"
-groups = ["default"]
-files = [
-    {file = "py-markdown-table-0.4.0.tar.gz", hash = "sha256:e595f9cc03d8a464f6aa616027be29cf033cd778ae8fe8c030d3d664e790dbc3"},
-    {file = "py_markdown_table-0.4.0-py3-none-any.whl", hash = "sha256:28a4848322cb1f975cf444080d3ada752138968b0f3727e295504c5f5fb5bae1"},
-]
-
-[[package]]
-name = "pygments"
-version = "2.17.2"
-requires_python = ">=3.7"
-summary = "Pygments is a syntax highlighting package written in Python."
-groups = ["default"]
-marker = "python_version >= \"3.7\""
-files = [
-    {file = "pygments-2.17.2-py3-none-any.whl", hash = "sha256:b27c2826c47d0f3219f29554824c30c5e8945175d888647acd804ddd04af846c"},
-    {file = "pygments-2.17.2.tar.gz", hash = "sha256:da46cec9fd2de5be3a8a784f434e4c4ab670b4ff54d605c4c2717e9d49c4c367"},
-]
-
-[[package]]
 name = "python-markdown-math"
 version = "0.8"
 requires_python = ">=3.6"
@@ -322,18 +291,6 @@ dependencies = [
 files = [
     {file = "python-markdown-math-0.8.tar.gz", hash = "sha256:8564212af679fc18d53f38681f16080fcd3d186073f23825c7ce86fadd3e3635"},
     {file = "python_markdown_math-0.8-py3-none-any.whl", hash = "sha256:c685249d84b5b697e9114d7beb352bd8ca2e07fd268fd4057ffca888c14641e5"},
-]
-
-[[package]]
-name = "setuptools"
-version = "65.7.0"
-requires_python = ">=3.7"
-summary = "Easily download, build, install, upgrade, and uninstall Python packages"
-groups = ["default"]
-marker = "python_version >= \"3.7\""
-files = [
-    {file = "setuptools-65.7.0-py3-none-any.whl", hash = "sha256:8ab4f1dbf2b4a65f7eec5ad0c620e84c34111a68d3349833494b9088212214dd"},
-    {file = "setuptools-65.7.0.tar.gz", hash = "sha256:4d3c92fac8f1118bb77a22181355e29c239cabfe2b9effdaa665c66b711136d7"},
 ]
 
 [[package]]
@@ -421,16 +378,4 @@ marker = "python_version < \"3.11\""
 files = [
     {file = "tomli-1.2.3-py3-none-any.whl", hash = "sha256:e3069e4be3ead9668e21cb9b074cd948f7b3113fd9c8bba083f48247aab8b11c"},
     {file = "tomli-1.2.3.tar.gz", hash = "sha256:05b6166bff487dc068d322585c7ea4ef78deed501cc124060e0f238e89a9231f"},
-]
-
-[[package]]
-name = "zipp"
-version = "3.6.0"
-requires_python = ">=3.6"
-summary = "Backport of pathlib-compatible object wrapper for zip files"
-groups = ["default"]
-marker = "python_version < \"3.10\""
-files = [
-    {file = "zipp-3.6.0-py3-none-any.whl", hash = "sha256:9fe5ea21568a0a70e50f273397638d39b03353731e6cbbb3fd8502a33fec40bc"},
-    {file = "zipp-3.6.0.tar.gz", hash = "sha256:71c644c5369f4a6e07636f0aa966270449561fcea2e3d6747b8d23efaa9d7832"},
 ]

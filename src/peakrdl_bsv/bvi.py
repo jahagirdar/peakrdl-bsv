@@ -1,12 +1,14 @@
 from systemrdl import RDLListener
-class PrintBVI(RDLListener):
-    def __init__(self,bvifile):
-        self.file=bvifile
-        self.hdr=''
 
-    def enter_Addrmap(self,node):
-        name=node.get_path_segment()
-        self.hdr=f'''
+
+class PrintBVI(RDLListener):
+    def __init__(self, bvifile):
+        self.file = bvifile
+        self.hdr = ""
+
+    def enter_Addrmap(self, node):
+        name = node.get_path_segment()
+        self.hdr = f"""
 import AXI4_Lite_Types::*;
 interface {name}_IFC#(numeric type wd_addr,
 				numeric type wd_data,
@@ -3024,4 +3026,4 @@ module mkCSRFoo(CSRFoo);
 
 	F f<- mkFoo_Reg();
 endmodule
-'''
+"""
