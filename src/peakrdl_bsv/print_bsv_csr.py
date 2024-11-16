@@ -20,11 +20,17 @@ class PrintBSVCSR(RDLListener):
         # print(node.inst.__dict__)
         self.reg_name = node.get_path_segment()
         self.hier_path = [*self.addressmap, self.reg_name]
-        self.interface += f"interface ConfigReg_HW_{self.reg_name} {self.reg_name.lower()};\n"
+        self.interface += (
+            f"interface ConfigReg_HW_{self.reg_name} {self.reg_name.lower()};\n"
+        )
         self.instance += f"ConfigReg_{self.reg_name} reg_{self.reg_name} <- mkConfigReg_{self.reg_name}();\n"
         self.method += f"interface ConfigReg_HW_{self.reg_name} {self.reg_name.lower()} = reg_{self.reg_name}.hw;\n"
-        self.write_method += f'if(address== {node.address_offset})reg_{self.reg_name}.bus.write(data);\n'
-        self.read_method += f'if(address== {node.address_offset})rv<-reg_{self.reg_name}.bus.read();\n'
+        self.write_method += (
+            f"if(address== {node.address_offset})reg_{self.reg_name}.bus.write(data);\n"
+        )
+        self.read_method += (
+            f"if(address== {node.address_offset})rv<-reg_{self.reg_name}.bus.read();\n"
+        )
 
     def exit_Addrmap(self, node):
         # print(node,node.inst.properties)
