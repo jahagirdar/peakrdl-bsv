@@ -1,3 +1,4 @@
+"""Write Bluespec Signal class."""
 import sys
 from systemrdl import RDLCompiler, RDLWalker
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -11,21 +12,27 @@ from systemrdl import RDLListener
 
 
 class PrintBSVSignal(RDLListener):
+    """Write Bluespec Signal class."""
+
     def __init__(self, bsvfile):
+        """Initialize."""
         self.indent = 0
         self.file = bsvfile
         self.field_count = 0
         self.addressmap = []
 
     def enter_Addrmap(self, node):
+        """Address Map Handler."""
         self.addressmap.append(node.get_path_segment())
         self.addrmap_name = node.get_path_segment()
 
     def enter_Reg(self, node):
+        """Reg  Handler."""
         self.reg_name = node.get_path_segment()
         self.hier_path = [*self.addressmap, self.reg_name]
 
     def enter_Field(self, node):
+        """Field  Handler."""
         name = node.get_path_segment()
         attr = node.inst.properties
         attr["width"] = node.width
@@ -44,9 +51,11 @@ class PrintBSVSignal(RDLListener):
         print(template.render(attr=attr, node=node), file=self.file)
 
     def exit_Reg(self, node):
+        """Reg  Handler."""
         self.indent -= 1
 
     def exit_Addrmap(self, node):
+        """Addrmap  Handler."""
         self.addressmap.pop()
 
 

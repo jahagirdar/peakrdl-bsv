@@ -1,4 +1,4 @@
-* PeakRDL bsv version:
+* dyulib version:
 * Python version:
 * Operating System:
 

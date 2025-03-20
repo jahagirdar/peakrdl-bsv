@@ -29,7 +29,7 @@ class BSVExporter:  # pylint: disable=too-few-public-methods
         rename: Optional[str] = None,
         depth: int = 0,
     ):
-        print(f"{top_node.inst.inst_name} {input_files} {outputpath}")
+        """Writeout the BSV code."""
         rdlc = RDLCompiler()
         try:
             for input_file in input_files:
