@@ -1,3 +1,5 @@
+dummy:
+	echo "This is a dummy run"
 run:
 	peakrdl bsv test.rdl -o .
 	bsc -bdir bo -elab Foo_signal.bsv

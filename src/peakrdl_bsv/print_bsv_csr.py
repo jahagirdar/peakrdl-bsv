@@ -1,12 +1,17 @@
+"""Toplevel CSR Module generator."""
 from systemrdl import RDLListener
 
 
 class PrintBSVCSR(RDLListener):
+    """Class to write the CSR module."""
+
     def __init__(self, bsvfile):
+        """Initialization."""
         self.file = bsvfile
         self.addressmap = []
 
     def enter_Addrmap(self, node):
+        """Addressmap handler."""
         self.addrmap_name = node.get_path_segment()
         print(f"import {self.addrmap_name}_reg::*;", file=self.file)
         self.interface = ""
@@ -17,6 +22,7 @@ class PrintBSVCSR(RDLListener):
         self.addressmap.append(node.get_path_segment())
 
     def enter_Reg(self, node):
+        """Reg Handler."""
         # print(node.inst.__dict__)
         self.reg_name = node.get_path_segment()
         self.hier_path = [*self.addressmap, self.reg_name]
@@ -33,6 +39,7 @@ class PrintBSVCSR(RDLListener):
         )
 
     def exit_Addrmap(self, node):
+        """Write code for addressmap."""
         # print(node,node.inst.properties)
         print(
             f"""

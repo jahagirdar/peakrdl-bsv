@@ -1,17 +1,12 @@
 """PeakRDL Markdown plug-in."""
-
 __authors__ = ["Vijayvithal Jahagirdar < jahagirdar.vs@gmail.com>"]
-
 from typing import TYPE_CHECKING
-
 from peakrdl.plugins.exporter import ExporterSubcommandPlugin  # type: ignore
-
 from .exporter import BSVExporter
 
 if TYPE_CHECKING:
     import argparse
     from typing import Union
-
     from systemrdl.node import AddrmapNode, RootNode  # type: ignore
 
 

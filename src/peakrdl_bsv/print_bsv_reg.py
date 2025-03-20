@@ -1,17 +1,23 @@
+"""Write Bluespec Register file."""
 from systemrdl import RDLListener
 
 
 class PrintBSVReg(RDLListener):
+    """Write Register defination file."""
+
     def __init__(self, bsvfile):
+        """Initialize."""
         self.file = bsvfile
         self.addressmap = []
 
     def enter_Addrmap(self, node):
+        """Addressmap Handler."""
         self.addrmap_name = node.get_path_segment()
         print(f"import {self.addrmap_name}_signal::*;", file=self.file)
         self.addressmap.append(node.get_path_segment())
 
     def enter_Reg(self, node):
+        """RegHandler."""
         self.reg_name = node.get_path_segment()
         self.hier_path = [*self.addressmap, self.reg_name]
         self.interface = ""
@@ -21,6 +27,7 @@ class PrintBSVReg(RDLListener):
         self.read_method = ""
 
     def enter_Field(self, node):
+        """Field Handler."""
         self.signal_name = node.get_path_segment()
         reset = "0"
         if "reset" in node.inst.properties:
@@ -38,6 +45,7 @@ class PrintBSVReg(RDLListener):
             self.read_method += f"let var_{self.signal_name}<-sig_{self.signal_name}.bus.read();\nrv[{node.high}:{node.low}]=var_{self.signal_name};\n"
 
     def exit_Reg(self, node):
+        """Write out register file."""
         width = node.inst.properties["regwidth"]
         print(
             f"""
