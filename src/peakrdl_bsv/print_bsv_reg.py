@@ -33,10 +33,10 @@ class PrintBSVReg(RDLListener):
         if "reset" in node.inst.properties:
             reset = node.inst.properties["reset"]
         self.interface += (
-            f"interface HW_{self.reg_name}_{self.signal_name} {self.signal_name};\n"
+            f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name};\n"
         )
         self.instance += f"Ifc_CSRSignal_{self.reg_name}_{self.signal_name} sig_{self.signal_name} <- mkCSRSignal_{self.reg_name}_{self.signal_name}({reset});\n"
-        self.method += f"interface HW_{self.reg_name}_{self.signal_name} {self.signal_name} = sig_{self.signal_name}.hw;\n"
+        self.method += f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name} = sig_{self.signal_name}.hw;\n"
         if node.is_sw_writable:
             self.write_method += (
                 f"sig_{self.signal_name}.bus.write(data[{node.high}:{node.low}]);\n"
