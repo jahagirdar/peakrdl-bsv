@@ -62,7 +62,6 @@ interface ConfigReg_{self.reg_name};
 interface ConfigReg_HW_{self.reg_name} hw;
 interface ConfigReg_Bus_{self.reg_name} bus;
 endinterface
-(*synthesize*)
 module mkConfigReg_{self.reg_name}(ConfigReg_{self.reg_name});
     {self.instance}
 interface ConfigReg_HW_{self.reg_name} hw;
