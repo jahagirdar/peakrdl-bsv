@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
 from duty import duty
-from duty.callables import coverage, mkdocs, mypy,  ruff
+from duty.callables import coverage, mkdocs, mypy, ruff
 
 if TYPE_CHECKING:
     from duty.context import Context
 
 
-PY_SRC_PATHS = (Path(_) for _ in ("src", "tests", "duties.py", "scripts"))
+PY_SRC_PATHS = (Path(_) for _ in ("src", "tests", "scripts"))
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
 PY_SRC = " ".join(PY_SRC_LIST)
 CI = os.environ.get("CI", "0") in {"1", "true", "yes", ""}
@@ -276,7 +276,7 @@ def test(ctx: Context, match: str = "") -> None:
     """
     py_version = f"{sys.version_info.major}{sys.version_info.minor}"
     os.environ["COVERAGE_FILE"] = f".coverage.{py_version}"
-    ctx.run( "make", title="Running tests")
+    ctx.run("make", title="Running tests")
 
 
 @duty
