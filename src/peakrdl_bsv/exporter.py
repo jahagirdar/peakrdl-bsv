@@ -28,6 +28,7 @@ class BSVExporter:  # pylint: disable=too-few-public-methods
         input_files: Optional[List[str]] = None,
         rename: Optional[str] = None,
         depth: int = 0,
+        test: bool = False,
     ):
         """Writeout the BSV code."""
         rdlc = RDLCompiler()
@@ -40,10 +41,10 @@ class BSVExporter:  # pylint: disable=too-few-public-methods
         fname = f"{outputpath}/{top_node.inst.inst_name}"
         with open(fname + "_signal.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVSignal(file))
+            walker.walk(root, PrintBSVSignal(file, test))
         with open(fname + "_reg.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVReg(file))
+            walker.walk(root, PrintBSVReg(file, test))
         with open(fname + "_csr.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVCSR(file))
+            walker.walk(root, PrintBSVCSR(file, test))

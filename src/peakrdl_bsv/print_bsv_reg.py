@@ -5,9 +5,10 @@ from systemrdl import RDLListener
 class PrintBSVReg(RDLListener):
     """Write Register defination file."""
 
-    def __init__(self, bsvfile):
+    def __init__(self, bsvfile, test):
         """Initialize."""
         self.file = bsvfile
+        self.gentest = test
         self.addressmap = []
 
     def enter_Addrmap(self, node):
@@ -23,8 +24,8 @@ class PrintBSVReg(RDLListener):
         self.interface = ""
         self.instance = ""
         self.method = ""
-        self.write_method = ""
-        self.read_method = ""
+        self.write_method = "//write methods\n"
+        self.read_method = "//read methods\n"
 
     def enter_Field(self, node):
         """Field Handler."""
@@ -37,12 +38,21 @@ class PrintBSVReg(RDLListener):
         )
         self.instance += f"Ifc_CSRSignal_{self.reg_name}_{self.signal_name} sig_{self.signal_name} <- mkCSRSignal_{self.reg_name}_{self.signal_name}({reset});\n"
         self.method += f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name} = sig_{self.signal_name}.hw;\n"
-        if node.is_sw_writable:
+        if node.inst.properties.get("sw_writable"):
             self.write_method += (
                 f"sig_{self.signal_name}.bus.write(data[{node.high}:{node.low}]);\n"
             )
-        if node.is_sw_readable:
+        if node.inst.properties.get("sw_readable"):
             self.read_method += f"let var_{self.signal_name}<-sig_{self.signal_name}.bus.read();\nrv[{node.high}:{node.low}]=var_{self.signal_name};\n"
+        else:
+            self.read_method += f"""
+                //{node.get_path_segment()} Not Readable
+// inst.properties['sw']:                   , {node.inst.properties.get('sw')}
+// node.get_property('sw'):                 , {node.get_property('sw')}
+// type(get_property('sw')):                , {type(node.get_property('sw'))}
+// node.inst.properties.get('sw_readable'): , {node.inst.properties.get('sw_readable')}
+// node.is_sw_readable:                     , {node.is_sw_readable}
+            \n"""
 
     def exit_Reg(self, node):
         """Write out register file."""
