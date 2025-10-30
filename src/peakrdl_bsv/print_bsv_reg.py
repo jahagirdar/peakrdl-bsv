@@ -44,8 +44,8 @@ class PrintBSVReg(RDLListener):
             )
         if node.inst.properties.get("sw_readable"):
             self.read_method += f"let var_{self.signal_name}<-sig_{self.signal_name}.bus.read();\nrv[{node.high}:{node.low}]=var_{self.signal_name};\n"
-        else:
-            self.read_method += f"""
+        print(
+            f"""
                 //{node.get_path_segment()} Not Readable
 // inst.properties['sw']:                   , {node.inst.properties.get('sw')}
 // node.get_property('sw'):                 , {node.get_property('sw')}
@@ -53,6 +53,7 @@ class PrintBSVReg(RDLListener):
 // node.inst.properties.get('sw_readable'): , {node.inst.properties.get('sw_readable')}
 // node.is_sw_readable:                     , {node.is_sw_readable}
             \n"""
+        )
 
     def exit_Reg(self, node):
         """Write out register file."""
