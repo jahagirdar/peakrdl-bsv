@@ -6,9 +6,10 @@ import math
 class PrintBSVCSR(RDLListener):
     """Class to write the CSR module."""
 
-    def __init__(self, bsvfile):
+    def __init__(self, bsvfile, test):
         """Initialization."""
         self.file = bsvfile
+        self.gentest = test
         self.addressmap = []
         self.regwidth = []
 
