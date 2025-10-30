@@ -85,3 +85,7 @@ jobs:
 
     - name: Run the test suite
       run: pdm run duty test
+    - name: run peakrdl
+      run: pdm run peakrdl bsv tests/test.rdl -o .
+    - name: run pytest
+      run: pdm run pytest
