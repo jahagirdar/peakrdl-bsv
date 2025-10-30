@@ -25,6 +25,13 @@ class Exporter(ExporterSubcommandPlugin):  # pylint: disable=too-few-public-meth
             type=int,
             help="Depth of generation (0 means all)",
         )
+        arg_group.add_argument(
+            "--test",
+            dest="test",
+            default=False,
+            type=bool,
+            help="generate verilog test code",
+        )
 
     def do_export(
         self, top_node: "Union[AddrmapNode, RootNode]", options: "argparse.Namespace"
@@ -41,4 +48,5 @@ class Exporter(ExporterSubcommandPlugin):  # pylint: disable=too-few-public-meth
             input_files=options.input_files,
             rename=options.inst_name,
             depth=options.depth,
+            test=options.test,
         )
