@@ -1,0 +1,107 @@
+from peakrdl_bsv.print_bsv_reg import PrintBSVReg
+import pytest
+from systemrdl import RDLCompiler, RDLWalker, RDLListener
+
+
+def test_readable(mocker):
+    mock_file = mocker.mock_open(
+        read_data="""
+
+addrmap Foo {
+default regwidth=32;
+reg {
+field {singlepulse;rclr;swacc;swmod;anded;ored;xored;woset;} all0=0;
+field {woclr;rset; }all1;
+field {sw=rw;hw=rw; }all2;
+field {sw=rw;counter; }all3[4];
+} All;
+reg {
+field {sw=rw;hw=r;rclr;} s_rclr[2]=1;
+field {sw=rw;hw=r;rset;} s_rset[2]=0;
+field {sw=rw;hw=r;singlepulse;} s_singlepulse[1]=0;
+field {sw=rw;hw=r;swacc;} s_swacc[2]=0;
+ field {sw=rw;hw=r;swmod;} s_swmod[2]=0;
+ field {sw=rw;hw=r;swwe;} s_swwe[2]=0;
+ field {sw=rw;hw=r;swwel;} s_swwel[2]=0;
+ field {sw=rw;hw=r;woclr;} s_woclr[2]=0;
+ field {sw=rw;hw=r;woset;} s_woset[2]=0;
+}TEST_HW_R;
+reg {
+field {sw=rw;hw=rw;rclr;} s_rclr[2]=0;
+field {sw=rw;hw=rw;rset;} s_rset[2]=0;
+field {sw=rw;hw=r;singlepulse;} s_singlepulse[1]=0;
+field {sw=rw;hw=rw;swacc;} s_swacc[2]=0;
+ field {sw=rw;hw=rw;swmod;} s_swmod[2]=0;
+ field {sw=rw;hw=rw;swwe;} s_swwe[2]=0;
+ field {sw=rw;hw=rw;swwel;} s_swwel[2]=0;
+ field {sw=rw;hw=rw;woclr;} s_woclr[2]=0;
+ field {sw=rw;hw=rw;woset;} s_woset[2]=0;
+}TEST_HW_RW;
+
+reg {
+field {sw=rw;anded;} h_anded[2]=0;
+field {sw=rw;hwclr;} h_clear[2]=0;
+//field {sw=rw;hw=rw;} edata[2];
+//field {sw=rw;hwenable=edata;} h_enable[2]=0;
+//field {sw=rw;hwmask;} h_mask[2]=0;
+field {sw=rw;hwset;} h_set[2]=0;
+field {sw=rw;ored;} h_ored[2]=0;
+field {sw=rw;we;} h_we[2]=0;
+field {sw=rw;wel;} h_wel[2]=0;
+field {sw=rw;xored;} h_xored[2]=0;
+} HW;
+reg {
+field {counter;} f_counter[8];
+} Counter;
+reg{
+field {level intr;} f_interrupt[8];
+} Interrupt;
+};
+"""
+    )
+    mocker.patch("builtins.open", mock_file)
+    rdlc = RDLCompiler()
+    rdlc.compile_file("dummy.rdl")
+    root = rdlc.elaborate()
+    walker = RDLWalker(unroll=True)
+    walker.walk(root, PRINT())
+
+
+class PRINT(RDLListener):
+    def enter_Field(self, node):
+        print(
+            f'''
+// inst.properties['sw']:                   , {node.inst.properties.get('sw')}
+// node.get_property('sw'):                 , {node.get_property('sw')}
+// type(get_property('sw')):                , {type(node.get_property('sw'))}
+// node.inst.properties.get('sw_readable'): , {node.inst.properties.get('sw_readable')}
+// node.is_sw_readable:                     , {node.is_sw_readable}
+            \n"""
+            '''
+        )
+        assert node.is_sw_readable, "Should be readable"
+
+
+def test_readable_withpeakrdl(mocker):
+    mock_file = mocker.mock_open(
+        read_data="""
+addrmap Foo {
+  alignment=4;
+default hw=na;
+default sw=na;
+  default regwidth=32;
+    reg{
+field {sw=r;desc="major_rev";} major_rev[23:16]=10;
+        }foo;
+    };
+"""
+    )
+    mocker.patch("builtins.open", mock_file)
+
+    rdlc = RDLCompiler()
+    rdlc.compile_file("dummy.rdl")
+    root = rdlc.elaborate()
+    walker = RDLWalker(unroll=True)
+    with open("test" + "_reg.bsv", "w") as file:
+        walker.walk(root, PrintBSVReg(file, False))
+        assert 1
