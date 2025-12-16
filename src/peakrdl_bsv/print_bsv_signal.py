@@ -1,5 +1,6 @@
 """Write Bluespec Signal class."""
 import sys
+import copy
 from systemrdl import RDLCompiler, RDLWalker
 from jinja2 import Environment, PackageLoader, select_autoescape
 
@@ -34,8 +35,9 @@ class PrintBSVSignal(RDLListener):
 
     def enter_Field(self, node):
         """Field  Handler."""
+        # print(f'onEnter {type(node.get_property('sw'))}')
         name = node.get_path_segment()
-        attr = node.inst.properties
+        attr = copy.deepcopy(node.inst.properties)
         attr["width"] = node.width
         attr["signal_name"] = name
         attr["reg_name"] = self.reg_name
@@ -53,9 +55,11 @@ class PrintBSVSignal(RDLListener):
             autoescape=select_autoescape(),
         )
         template = env.get_template("config_signal.bsv")
+        # print(f'preRender {type(node.get_property('sw'))}')
         print(
             template.render(attr=attr, node=node, gentest=self.gentest), file=self.file
         )
+        # print(f'onExit {type(node.get_property('sw'))}')
 
     def exit_Reg(self, node):
         """Reg  Handler."""
