@@ -39,7 +39,6 @@ jobs:
         with:
           python-version: "3.12"
           cache: false
-          version: "2.x"   # pin to a known compatible version
 
       - name: Resolving dependencies
         run: pdm lock -v -G docs
