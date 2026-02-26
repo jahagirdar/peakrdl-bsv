@@ -1,67 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/ai/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/ai/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/changelog/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/changelog/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/code_of_conduct/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/code_of_conduct/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/contributing/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/contributing/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/credits/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/credits/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/license/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/license/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/SUMMARY/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/SUMMARY/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/peakrdl_bsv/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/peakrdl_bsv/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/peakrdl_bsv/cli/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/peakrdl_bsv/cli/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/peakrdl_bsv/exporter/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/peakrdl_bsv/exporter/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/peakrdl_bsv/print_bsv_csr/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/peakrdl_bsv/print_bsv_csr/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/peakrdl_bsv/print_bsv_reg/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/peakrdl_bsv/print_bsv_reg/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/peakrdl_bsv/print_bsv_signal/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/peakrdl_bsv/print_bsv_signal/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/reference/peakrdl_bsv/templates/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/reference/peakrdl_bsv/templates/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
     <url>
-         <loc>https://jahagirdar.github.io/cocotb-bsv/coverage/</loc>
+         <loc>https://jahagirdar.github.io/peakrdl-bsv/coverage/</loc>
          <lastmod>2026-02-26</lastmod>
     </url>
 </urlset>
