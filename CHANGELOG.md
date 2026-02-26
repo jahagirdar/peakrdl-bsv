@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-02-26
+### Fixed
+- 0.0.5 resolved ci issues
 ## [0.0.4] - 2026-02-26
 ### Fixed
 - 0.0.4 Issues with sw read.
