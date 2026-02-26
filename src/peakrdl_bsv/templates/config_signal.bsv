@@ -8,7 +8,7 @@
 //{{node.width}}
 interface SW_{{attr['reg_name']}}_{{attr['signal_name']}};
 {%if attr['sw_writable']%}
-method Action write(Bit#({{node.width}}) data);
+method Action write(Bit#({{node.width}}) data,Bit#({{node.width}}) wstrb);
 {%endif%}
 {%if attr['sw_readable']%}
 method ActionValue#(Bit#({{node.width}})) read ();
@@ -46,7 +46,7 @@ PulseWire pw_set <-mkPulseWire();
 PulseWire pw_clear <-mkPulseWire();
 PulseWire pw_swacc <-mkPulseWire();
 PulseWire pw_swmod <-mkPulseWire();
-RWire#(Bit#({{node.width}}))sw_wdata <-mkRWire();
+RWire#(Tuple2#(Bit#({{node.width}}),Bit#({{node.width}})))sw_wdata <-mkRWire();
 RWire#(Bit#({{node.width}}))hw_wdata <-mkRWire();
 RWire#(Bit#({{node.width}}))r_incr <-mkRWire();
 RWire#(Bit#({{node.width}}))r_decr <-mkRWire();
@@ -56,7 +56,7 @@ rule r_write;
 	{%if attr['singlepulse']%} rr = 0;{%endif%}
 	if(pw_clear) rr =0;
 	else if(pw_set) rr =1;
-	else if(sw_wdata.wget( ) matches tagged Valid .v) rr = v;
+    else if(sw_wdata.wget( ) matches tagged Valid .v) rr = ((tpl_1(v) & tpl_2(v)) | (~tpl_2(v) &rr));
 	else if(hw_wdata.wget( ) matches tagged Valid .v) rr = v;
 	else if(r_incr.wget( ) matches tagged Valid .v)   rr = r + v;
 	else if(r_decr.wget( ) matches tagged Valid .v)   rr = r - v;
@@ -117,17 +117,19 @@ endmethod
 endinterface
 interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;
 {%if attr['sw_writable']%}
-method Action write(Bit#({{node.width}}) data);
+method Action write(Bit#({{node.width}}) data, Bit#({{node.width}}) wstrb);
 	let mod=False;
-	{%if attr['sw'] in ['AccessType.rw','AccessType.w']%} sw_wdata.wset(data);{%endif%}
-	{%if attr['swmod']%} mod=(data!=r);{%endif%}
-	{%if attr['swacc']%} pw_swacc.send();{%endif%}
-	{%if attr['woclr']%} if(data ==1) pw_clear.send();{%endif%}
-	{%if attr['woset']%}if( data ==1) pw_set.send();{%endif%}
+	{%if attr['sw'] in ['AccessType.rw','AccessType.w']%} sw_wdata.wset(tuple2(data,wstrb));{%endif%}
+    if (wstrb !=0)begin
+	    {%if attr['swmod']%} mod=(data!=r);{%endif%}
+	    {%if attr['swacc']%} pw_swacc.send();{%endif%}
+	    {%if attr['woclr']%} if(data ==1) pw_clear.send();{%endif%}
+	    {%if attr['woset']%}if( data ==1) pw_set.send();{%endif%}
         {%if attr['swmod'] and  attr['woclr']%} mod=(r!=0);{%endif%}
         {%if attr['swmod'] and attr['woset']%} mod=(r!=1); {%endif%}
-	if(mod)
-		pw_swmod.send();
+	    if(mod)
+		    pw_swmod.send();
+    end
 endmethod
 {%endif%}
 {%if attr['sw_readable']%}
