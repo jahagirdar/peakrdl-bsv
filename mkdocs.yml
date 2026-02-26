@@ -1,8 +1,8 @@
 site_name: "peakrdl-bsv"
 site_description: "Register file generator for Bluespec"
-site_url: "https://jahagirdar.github.io/cocotb-bsv"
-repo_url: "https://github.com/jahagirdar/cocotb-bsv"
-repo_name: "jahagirdar/cocotb-bsv"
+site_url: "https://jahagirdar.github.io/peakrdl-bsv"
+repo_url: "https://github.com/jahagirdar/peakrdl-bsv"
+repo_name: "jahagirdar/peakrdl-bsv"
 site_dir: "site"
 watch: [mkdocs.yml, README.md, CONTRIBUTING.md, CHANGELOG.md, src/peakrdl_bsv/, src/peakrdl_bsv/templates]
 copyright: Copyright &copy; 2024 Vijayvithal Jahagirdar
@@ -105,7 +105,7 @@ plugins:
 - mkdocstrings:
     handlers:
       python:
-        import:
+        inventories:
         - https://docs.python.org/3/objects.inv
         paths: [src]
         options:
@@ -138,7 +138,5 @@ extra:
   social:
   - icon: fontawesome/brands/github
     link: https://github.com/jahagirdar
-  - icon: fontawesome/brands/gitter
-    link: https://gitter.im/cocotb/community
   - icon: fontawesome/brands/python
     link: https://pypi.org/project/peakrdl-bsv/
