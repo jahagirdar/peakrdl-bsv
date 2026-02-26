@@ -1,9 +1,11 @@
+"""Test."""
 from peakrdl_bsv.print_bsv_reg import PrintBSVReg
-import pytest
+import pytest  # noqa: F401
 from systemrdl import RDLCompiler, RDLWalker, RDLListener
 
 
 def test_readable(mocker):
+    """Readable field test."""
     mock_file = mocker.mock_open(
         read_data="""
 
@@ -68,21 +70,15 @@ field {level intr;} f_interrupt[8];
 
 
 class PRINT(RDLListener):
+    """TreeWalker."""
+
     def enter_Field(self, node):
-        print(
-            f'''
-// inst.properties['sw']:                   , {node.inst.properties.get('sw')}
-// node.get_property('sw'):                 , {node.get_property('sw')}
-// type(get_property('sw')):                , {type(node.get_property('sw'))}
-// node.inst.properties.get('sw_readable'): , {node.inst.properties.get('sw_readable')}
-// node.is_sw_readable:                     , {node.is_sw_readable}
-            \n"""
-            '''
-        )
+        """Override."""
         assert node.is_sw_readable, "Should be readable"
 
 
 def test_readable_withpeakrdl(mocker):
+    """Mock test."""
     mock_file = mocker.mock_open(
         read_data="""
 addrmap Foo {

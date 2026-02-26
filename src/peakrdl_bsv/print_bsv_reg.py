@@ -41,13 +41,13 @@ class PrintBSVReg(RDLListener):
         self.method += f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name} = sig_{self.signal_name}.hw;\n"
         if node.is_sw_writable:
             self.write_method += f"sig_{self.signal_name}.bus.write(data[{node.high}:{node.low}],wstrb[{node.high}:{node.low}]);\n"
-        print(
-            self.reg_name,
-            self.signal_name,
-            node.is_sw_writable,
-            node.is_sw_readable,
-            node.inst.properties,
-        )
+        # print(
+        #     self.reg_name,
+        #     self.signal_name,
+        #     node.is_sw_writable,
+        #     node.is_sw_readable,
+        #     node.inst.properties,
+        # )
         if node.is_sw_readable:
             self.read_method += f"let var_{self.signal_name}<-sig_{self.signal_name}.bus.read();\nrv[{node.high}:{node.low}]=var_{self.signal_name};\n"
         if node.is_hw_readable:

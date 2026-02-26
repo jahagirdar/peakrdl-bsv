@@ -91,6 +91,9 @@ ignore = [
 "S603",
 "E402",
 "S607",
+"FBT001",
+"FBT002",
+"FBT003",
 ]
 
 [per-file-ignores]

@@ -81,4 +81,4 @@ if __name__ == "__main__":
         sys.exit(1)
     walker = RDLWalker(unroll=True)
     with open("bsv_test_signal.bsv", "w") as of:
-        walker.walk(root, PrintBSVSignal(of))
+        walker.walk(root, PrintBSVSignal(of, test=True))

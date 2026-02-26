@@ -1,9 +1,11 @@
+"""Big readable test."""
 from peakrdl_bsv.print_bsv_reg import PrintBSVReg
-import pytest
-from systemrdl import RDLCompiler, RDLWalker, RDLListener
+import pytest  # noqa: F401
+from systemrdl import RDLCompiler, RDLWalker
 
 
 def test_big_readable_withpeakrdl(mocker):
+    """Test all readable."""
     mock_file = mocker.mock_open(
         read_data="""
 addrmap Foo {
