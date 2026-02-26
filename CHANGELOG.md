@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-02-26
+### Fixed
+- 0.0.4 Issues with sw read.
+
 ## [0.0.1] - 2025-03-20
 ### Added
 - 0.0.1 Github Workflow scripts
