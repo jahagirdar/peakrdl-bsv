@@ -62,6 +62,7 @@ class PrintBSVReg(RDLListener):
         value_method.append("let rv=0;")
         for r in self.reg_val:
             value_method.append(f"rv[{r[1]}:{r[2]}]={r[0]};")
+        value_method_joined = "\n".join(value_method)
         print(
             f"""
 interface ConfigReg_HW_{self.reg_name};
@@ -84,7 +85,7 @@ module mkConfigReg_{self.reg_name}(ConfigReg_{self.reg_name});
 interface ConfigReg_HW_{self.reg_name} hw;
     {self.method}
     method Bit#({width}) value();
-    {'\n'.join(value_method)}
+    {value_method_joined}
     return rv;
     endmethod
 endinterface
