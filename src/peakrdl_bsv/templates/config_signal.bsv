@@ -1,12 +1,16 @@
 // {{attr}}
-// {{node}}
+// {{node.get_property('hw')}}
+// {{node.get_property('sw')}}
 //{{node.is_sw_writable}}
 //{{node.is_hw_writable}}
+//{{node.is_hw_readable}}
+//{{node.is_sw_readable}}
+//{{node.width}}
 interface SW_{{attr['reg_name']}}_{{attr['signal_name']}};
-{%if node.is_sw_writable%}
-method Action write(Bit#({{node.width}}) data);
+{%if attr['sw_writable']%}
+method Action write(Bit#({{node.width}}) data,Bit#({{node.width}}) wstrb);
 {%endif%}
-{%if node.is_sw_readable%}
+{%if attr['sw_readable']%}
 method ActionValue#(Bit#({{node.width}})) read ();
 {%endif%}
 endinterface
@@ -18,6 +22,10 @@ interface HW_{{attr['reg_name']}}_{{attr['signal_name']}};
 	{%if attr['anded']%} method Bool anded();{%endif%}
 	{%if attr['ored']%} method Bool ored();{%endif%}
 	{%if attr['xored']%} method Bool xored();{%endif%}
+{%if attr['hw_writable']%} method Action _write(Bit#({{node.width}}) data); {%endif%}
+{%if attr['hw_readable']%} method Bit#({{node.width}}) _read; {%endif%}
+{%if attr['counter']%}method Action incr(Bit#({{node.width}}) count);{%endif%}
+{%if attr['counter']%}method Action decr(Bit#({{node.width}}) count);{%endif%}
 	method Action clear();
 endinterface
 
@@ -26,10 +34,6 @@ interface HW_{{attr['reg_name']}}_{{attr['signal_name']}} hw;
 interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;
 // method Action bus_write(Bit#(width) data);
 // method  ActionValue#(Bit#(width)) bus_read;
-{%if node.is_hw_writable%} method Action _write(Bit#({{node.width}}) data); {%endif%}
-{%if node.is_hw_writable%} method Bit#({{node.width}}) _read; {%endif%}
-{%if attr['counter']%}method Action incr(Bit#({{node.width}}) count);{%endif%}
-{%if attr['counter']%}method Action decr(Bit#({{node.width}}) count);{%endif%}
 endinterface
 
 
@@ -42,7 +46,7 @@ PulseWire pw_set <-mkPulseWire();
 PulseWire pw_clear <-mkPulseWire();
 PulseWire pw_swacc <-mkPulseWire();
 PulseWire pw_swmod <-mkPulseWire();
-RWire#(Bit#({{node.width}}))sw_wdata <-mkRWire();
+RWire#(Tuple2#(Bit#({{node.width}}),Bit#({{node.width}})))sw_wdata <-mkRWire();
 RWire#(Bit#({{node.width}}))hw_wdata <-mkRWire();
 RWire#(Bit#({{node.width}}))r_incr <-mkRWire();
 RWire#(Bit#({{node.width}}))r_decr <-mkRWire();
@@ -52,7 +56,7 @@ rule r_write;
 	{%if attr['singlepulse']%} rr = 0;{%endif%}
 	if(pw_clear) rr =0;
 	else if(pw_set) rr =1;
-	else if(sw_wdata.wget( ) matches tagged Valid .v) rr = v;
+    else if(sw_wdata.wget( ) matches tagged Valid .v) rr = ((tpl_1(v) & tpl_2(v)) | (~tpl_2(v) &rr));
 	else if(hw_wdata.wget( ) matches tagged Valid .v) rr = v;
 	else if(r_incr.wget( ) matches tagged Valid .v)   rr = r + v;
 	else if(r_decr.wget( ) matches tagged Valid .v)   rr = r - v;
@@ -92,23 +96,43 @@ endmethod
 method Action clear();
 	pw_clear.send();
 endmethod
-endinterface
-interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;
-{%if node.is_sw_writable%}
-method Action write(Bit#({{node.width}}) data);
-	let mod=False;
-	{%if attr['sw'] in ['AccessType.rw','AccessType.w']%} sw_wdata.wset(data);{%endif%}
-	{%if attr['swmod']%} mod=(data!=r);{%endif%}
-	{%if attr['swacc']%} pw_swacc.send();{%endif%}
-	{%if attr['woclr']%} if(data ==1) pw_clear.send();{%endif%}
-	{%if attr['woset']%}if( data ==1) pw_set.send();{%endif%}
-        {%if attr['swmod'] and  attr['woclr']%} mod=(r!=0);{%endif%}
-        {%if attr['swmod'] and attr['woset']%} mod=(r!=1); {%endif%}
-	if(mod)
-		pw_swmod.send();
+{%if attr['hw_writable']%}
+method Action _write(Bit#({{node.width}}) data);
+	hw_wdata.wset(data);
 endmethod
 {%endif%}
-{%if node.is_sw_readable%}
+{%if attr['hw_readable']%}
+method Bit#({{node.width}}) _read;
+	return r;
+endmethod
+{%endif%}
+{%if attr['counter']%}
+method Action incr(Bit#({{node.width}}) count);
+		r_incr.wset(count);
+endmethod
+method Action decr(Bit#({{node.width}}) count);
+		r_decr.wset(count);
+endmethod
+{%endif%}
+endinterface
+interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;
+{%if attr['sw_writable']%}
+method Action write(Bit#({{node.width}}) data, Bit#({{node.width}}) wstrb);
+	let mod=False;
+	{%if attr['sw'] in ['AccessType.rw','AccessType.w']%} sw_wdata.wset(tuple2(data,wstrb));{%endif%}
+    if (wstrb !=0)begin
+	    {%if attr['swmod']%} mod=(data!=r);{%endif%}
+	    {%if attr['swacc']%} pw_swacc.send();{%endif%}
+	    {%if attr['woclr']%} if(data ==1) pw_clear.send();{%endif%}
+	    {%if attr['woset']%}if( data ==1) pw_set.send();{%endif%}
+        {%if attr['swmod'] and  attr['woclr']%} mod=(r!=0);{%endif%}
+        {%if attr['swmod'] and attr['woset']%} mod=(r!=1); {%endif%}
+	    if(mod)
+		    pw_swmod.send();
+    end
+endmethod
+{%endif%}
+{%if attr['sw_readable']%}
 method ActionValue#(Bit#({{node.width}})) read;
 	let rv=0;
 	let mod=False;
@@ -124,28 +148,12 @@ method ActionValue#(Bit#({{node.width}})) read;
 endmethod
 {%endif%}
 endinterface
-{%if node.is_hw_writable%}
-method Action _write(Bit#({{node.width}}) data);
-	hw_wdata.wset(data);
-endmethod
-{%endif%}
-{%if node.is_hw_readable%}
-method Bit#({{node.width}}) _read;
-	return r;
-endmethod
-{%endif%}
-{%if attr['counter']%}
-method Action incr(Bit#({{node.width}}) count);
-		r_incr.wset(count);
-endmethod
-method Action decr(Bit#({{node.width}}) count);
-		r_decr.wset(count);
-endmethod
-{%endif%}
 endmodule
+{%if gentest%}
 (*synthesize*)
 module testcsrreg_{{attr['reg_name']}}_{{attr['signal_name']}}(Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}});
 Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}} ipaddress_r<-mkCSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}}('h0);
 return ipaddress_r;
 endmodule
+{%endif%}
 // End getting CSR Code

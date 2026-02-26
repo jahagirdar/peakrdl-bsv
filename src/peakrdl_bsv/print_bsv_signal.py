@@ -1,5 +1,6 @@
 """Write Bluespec Signal class."""
 import sys
+import copy
 from systemrdl import RDLCompiler, RDLWalker
 from jinja2 import Environment, PackageLoader, select_autoescape
 
@@ -14,10 +15,11 @@ from systemrdl import RDLListener
 class PrintBSVSignal(RDLListener):
     """Write Bluespec Signal class."""
 
-    def __init__(self, bsvfile):
+    def __init__(self, bsvfile, test):
         """Initialize."""
         self.indent = 0
         self.file = bsvfile
+        self.gentest = test
         self.field_count = 0
         self.addressmap = []
 
@@ -33,11 +35,16 @@ class PrintBSVSignal(RDLListener):
 
     def enter_Field(self, node):
         """Field  Handler."""
+        # print(f'onEnter {type(node.get_property('sw'))}')
         name = node.get_path_segment()
-        attr = node.inst.properties
+        attr = copy.deepcopy(node.inst.properties)
         attr["width"] = node.width
         attr["signal_name"] = name
         attr["reg_name"] = self.reg_name
+        attr["hw_readable"] = node.is_hw_readable
+        attr["hw_writable"] = node.is_hw_writable
+        attr["sw_readable"] = node.is_sw_readable
+        attr["sw_writable"] = node.is_sw_writable
         if "sw" in node.inst.properties:
             attr["sw"] = f"{node.inst.properties['sw']}"
         if "hw" in node.inst.properties:
@@ -48,7 +55,11 @@ class PrintBSVSignal(RDLListener):
             autoescape=select_autoescape(),
         )
         template = env.get_template("config_signal.bsv")
-        print(template.render(attr=attr, node=node), file=self.file)
+        # print(f'preRender {type(node.get_property('sw'))}')
+        print(
+            template.render(attr=attr, node=node, gentest=self.gentest), file=self.file
+        )
+        # print(f'onExit {type(node.get_property('sw'))}')
 
     def exit_Reg(self, node):
         """Reg  Handler."""
@@ -70,4 +81,4 @@ if __name__ == "__main__":
         sys.exit(1)
     walker = RDLWalker(unroll=True)
     with open("bsv_test_signal.bsv", "w") as of:
-        walker.walk(root, PrintBSVSignal(of))
+        walker.walk(root, PrintBSVSignal(of, test=True))
