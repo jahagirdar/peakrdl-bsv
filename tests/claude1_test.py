@@ -132,8 +132,13 @@ class TestSwAccess:
             sig, r"method ActionValue.*read"
         ), "sw=w must NOT expose read method"
 
-    def test_sw_na_generates_no_bus_methods(self, tmpdir_str):
-        # sw=na with hw=rw to avoid 'meaningless combination' compile error
+    def test_sw_na_rejected_by_compiler(self, tmpdir_str):
+        # sw=na on a field inside a software register map is flagged by
+        # systemrdl-compiler itself as a hard compile error ("not accessible
+        # by software ... what's the point?") regardless of hw= — there is
+        # no BSV to generate for this case, so just assert it's rejected.
+        from systemrdl.messages import RDLCompileError
+
         rdl = textwrap.dedent(
             """\
             addrmap test {
@@ -144,14 +149,8 @@ class TestSwAccess:
             };
         """
         )
-        bsv = _compile_and_export(rdl, tmpdir_str)
-        sig = bsv["signal"]
-        assert _not_has(
-            sig, r"method Action write\("
-        ), "sw=na must NOT expose write method"
-        assert _not_has(
-            sig, r"method ActionValue.*read"
-        ), "sw=na must NOT expose read method"
+        with pytest.raises(RDLCompileError):
+            _compile_and_export(rdl, tmpdir_str)
 
 
 # ===========================================================================
@@ -235,9 +234,12 @@ class TestReset:
         """
         )
         bsv = _compile_and_export(rdl, tmpdir_str)
-        # The reg file instantiates mkCSRSignal_... with the reset value
+        # The reg file instantiates mkCSRSignal_... with the reset value.
+        # Signal modules are named after the register INSTANCE (reg0), not
+        # its type (test_reg), so multiple instances of the same reg type
+        # (or register arrays) don't collide.
         assert _has(
-            bsv["reg"], r"mkCSRSignal_test_reg_field0\(171\)"
+            bsv["reg"], r"mkCSRSignal_reg0_field0\(171\)"
         ), "Reset value 0xAB (171 decimal) must appear in module instantiation"
 
     def test_zero_reset_value(self, tmpdir_str):
@@ -253,7 +255,7 @@ class TestReset:
         )
         bsv = _compile_and_export(rdl, tmpdir_str)
         assert _has(
-            bsv["reg"], r"mkCSRSignal_test_reg_field0\(0\)"
+            bsv["reg"], r"mkCSRSignal_reg0_field0\(0\)"
         ), "Zero reset value must appear in module instantiation"
 
 
@@ -591,9 +593,12 @@ class TestOnwrite:
         """
         )
         bsv = _compile_and_export(rdl, tmpdir_str)
+        # woset applies a per-bit write-1-to-set function (not the whole-field
+        # pw_set pulse, which is reserved for the singlepulse `rset` property)
+        # so it works correctly on fields wider than 1 bit.
         assert _has(
-            bsv["signal"], r"pw_set\.send\(\)"
-        ), "onwrite=woset must call pw_set.send() inside write method"
+            bsv["signal"], r"rr\s*=\s*rr\s*\|\s*wdata"
+        ), "onwrite=woset must OR the write-enabled bits into the field"
 
 
 # ===========================================================================
@@ -626,27 +631,27 @@ class TestRegisterStructure:
 
     def test_reg_module_interface_declared(self, tmpdir_str):
         bsv = _compile_and_export(self._rdl_multi_field(), tmpdir_str)
+        # Named after the register INSTANCE (reg0), not its type (ctrl_reg),
+        # so multiple instances of the same reg type don't collide.
         assert _has(
-            bsv["reg"], r"interface ConfigReg_ctrl_reg"
-        ), "Reg file must define ConfigReg_ctrl_reg interface"
+            bsv["reg"], r"interface ConfigReg_reg0"
+        ), "Reg file must define ConfigReg_reg0 interface"
 
     def test_reg_module_declared(self, tmpdir_str):
         bsv = _compile_and_export(self._rdl_multi_field(), tmpdir_str)
         assert _has(
-            bsv["reg"], r"module mkConfigReg_ctrl_reg"
-        ), "Reg file must define mkConfigReg_ctrl_reg module"
+            bsv["reg"], r"module mkConfigReg_reg0"
+        ), "Reg file must define mkConfigReg_reg0 module"
 
     def test_reg_all_fields_instantiated(self, tmpdir_str):
         bsv = _compile_and_export(self._rdl_multi_field(), tmpdir_str)
         reg = bsv["reg"]
         assert _has(
-            reg, r"mkCSRSignal_ctrl_reg_enable"
+            reg, r"mkCSRSignal_reg0_enable"
         ), "enable signal must be instantiated"
+        assert _has(reg, r"mkCSRSignal_reg0_mode"), "mode signal must be instantiated"
         assert _has(
-            reg, r"mkCSRSignal_ctrl_reg_mode"
-        ), "mode signal must be instantiated"
-        assert _has(
-            reg, r"mkCSRSignal_ctrl_reg_status"
+            reg, r"mkCSRSignal_reg0_status"
         ), "status signal must be instantiated"
 
     def test_sw_writable_field_in_write_method(self, tmpdir_str):
@@ -689,19 +694,22 @@ class TestRegisterStructure:
         ), "hw-readable enable must contribute to value()"
         assert _has(reg, r"sig_mode\.hw"), "hw-readable mode must contribute to value()"
 
-    def test_hw_writeonly_field_zero_padded_in_value(self, tmpdir_str):
+    def test_hw_writeonly_field_reflects_stored_value(self, tmpdir_str):
         bsv = _compile_and_export(self._rdl_multi_field(), tmpdir_str)
         reg = bsv["reg"]
-        # status is hw=w (not hw readable by HW from reg perspective) → padded with 0
+        # status is hw=w (no hw _read method) but Ifc_CSRSignal_* always
+        # exposes currentValue() regardless of hw/sw access mode, so
+        # value() reflects what hw last wrote instead of a hardcoded 0
+        # (software otherwise could never read back a hw=w field).
         assert _has(
-            reg, r"'b0"
-        ), "hw-write-only status field must contribute 0 to value()"
+            reg, r"sig_status\.currentValue\(\)"
+        ), "hw-write-only status field must contribute its real value via currentValue()"
 
     def test_reg_bus_interface_declared(self, tmpdir_str):
         bsv = _compile_and_export(self._rdl_multi_field(), tmpdir_str)
         reg = bsv["reg"]
         assert _has(
-            reg, r"interface ConfigReg_Bus_ctrl_reg"
+            reg, r"interface ConfigReg_Bus_reg0"
         ), "Bus interface must be declared"
         assert _has(
             reg, r"method Action write\("
@@ -949,12 +957,14 @@ class TestIntegration:
         assert _has(sig, r"method Bool swmod\(\)"), "irq_pend swmod method missing"
         assert _has(sig, r"pw_clear\.send\(\)"), "irq_pend rclr missing"
 
-        # Reg file checks
+        # Reg file checks — modules are named after the register INSTANCE
+        # (ctrl/stat/ic/is), not the reg type (control/status/irq_ctrl/
+        # irq_status), so multiple instances of the same type don't collide.
         reg = bsv["reg"]
-        assert _has(reg, r"mkConfigReg_control"), f"control module missing {reg=}"
-        assert _has(reg, r"mkConfigReg_status"), "status module missing"
-        assert _has(reg, r"mkConfigReg_irq_ctrl"), "irq_ctrl module missing"
-        assert _has(reg, r"mkConfigReg_irq_status"), "irq_status module missing"
+        assert _has(reg, r"mkConfigReg_ctrl"), f"ctrl module missing {reg=}"
+        assert _has(reg, r"mkConfigReg_stat"), "stat module missing"
+        assert _has(reg, r"mkConfigReg_ic"), "ic module missing"
+        assert _has(reg, r"mkConfigReg_is"), "is module missing"
 
         # CSR file checks
         csr = bsv["csr"]
@@ -1047,8 +1057,10 @@ class TestGentest:
     def test_gentest_true_creates_synthesize_wrapper(self, tmpdir_str):
         bsv = _compile_and_export(self._simple_rdl(), tmpdir_str, test=True)
         sig = bsv["signal"]
+        # Wrapper is named after the register INSTANCE (reg0), not its
+        # type (test_reg), matching every other generated module name.
         assert _has(
-            sig, r"testcsrreg_test_reg_field0"
+            sig, r"testcsrreg_reg0_field0"
         ), "With gentest=True, a testcsrreg_ synthesize wrapper must be generated"
         assert _has(
             sig, r"\(\*synthesize\*\)"
@@ -1058,7 +1070,7 @@ class TestGentest:
         bsv = _compile_and_export(self._simple_rdl(), tmpdir_str, test=False)
         sig = bsv["signal"]
         assert _not_has(
-            sig, r"testcsrreg_test_reg_field0"
+            sig, r"testcsrreg_reg0_field0"
         ), "With gentest=False, no testcsrreg_ wrapper should be generated"
 
 
@@ -1109,12 +1121,13 @@ class TestSignalInternals:
     def test_interface_nesting_structure(self, tmpdir_str):
         bsv = _compile_and_export(self._simple_rdl(), tmpdir_str)
         sig = bsv["signal"]
-        # Outer module exposes both hw and bus sub-interfaces
+        # Outer module exposes both hw and bus sub-interfaces, named after
+        # the register INSTANCE (reg0), not its type (test_reg).
         assert _has(
-            sig, r"interface HW_test_reg_field0 hw"
+            sig, r"interface HW_reg0_field0 hw"
         ), "Signal module must expose 'hw' sub-interface"
         assert _has(
-            sig, r"interface SW_test_reg_field0 bus"
+            sig, r"interface SW_reg0_field0 bus"
         ), "Signal module must expose 'bus' (SW) sub-interface"
 
 
@@ -1188,8 +1201,9 @@ class TestNestedAddrmap:
         )
         bsv = _compile_and_export(rdl, tmpdir_str)
         csr = bsv["csr"]
-        assert _has(csr, r"mkConfigReg_reg_x"), "reg_x must appear in CSR"
-        assert _has(csr, r"mkConfigReg_reg_y"), "reg_y must appear in CSR"
+        # Named after the register INSTANCE (rx/ry), not its type (reg_x/reg_y).
+        assert _has(csr, r"mkConfigReg_rx"), "rx must appear in CSR"
+        assert _has(csr, r"mkConfigReg_ry"), "ry must appear in CSR"
 
 
 # ===========================================================================
@@ -1217,10 +1231,11 @@ class TestMetadataProperties:
             };
         """
         )
-        # Should complete without raising an exception
+        # Should complete without raising an exception. Named after the
+        # register INSTANCE (c), not its type (ctrl).
         bsv = _compile_and_export(rdl, tmpdir_str)
         assert _has(
-            bsv["signal"], r"mkCSRSignal_ctrl_enable"
+            bsv["signal"], r"mkCSRSignal_c_enable"
         ), f"Signal module must be generated even when name/desc are set {bsv=}"
 
 
