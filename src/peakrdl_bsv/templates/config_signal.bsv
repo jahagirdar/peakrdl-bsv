@@ -22,6 +22,8 @@ interface HW_{{attr['reg_name']}}_{{attr['signal_name']}};
 	{%if attr['anded']%} method Bool anded();{%endif%}
 	{%if attr['ored']%} method Bool ored();{%endif%}
 	{%if attr['xored']%} method Bool xored();{%endif%}
+	{%if attr['hwset']%} method Action hwset();{%endif%}
+	{%if attr['hwclr']%} method Action hwclr();{%endif%}
 {%if attr['hw_writable']%} method Action _write(Bit#({{node.width}}) data); {%endif%}
 {%if attr['hw_readable']%} method Bit#({{node.width}}) _read; {%endif%}
 {%if attr['counter']%}method Action incr(Bit#({{node.width}}) count);{%endif%}
@@ -34,6 +36,10 @@ interface HW_{{attr['reg_name']}}_{{attr['signal_name']}} hw;
 interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;
 // method Action bus_write(Bit#(width) data);
 // method  ActionValue#(Bit#(width)) bus_read;
+// Always present regardless of hw/sw access mode: the register-level
+// value() aggregation (see print_bsv_reg.py) reads every field's current
+// stored value through this, rather than special-casing hw=r vs hw=w.
+method Bit#({{node.width}}) currentValue();
 endinterface
 
 
@@ -55,8 +61,28 @@ rule r_write;
 	let rr = r;
 	{%if attr['singlepulse']%} rr = 0;{%endif%}
 	if(pw_clear) rr =0;
-	else if(pw_set) rr =1;
-    else if(sw_wdata.wget( ) matches tagged Valid .v) rr = ((tpl_1(v) & tpl_2(v)) | (~tpl_2(v) &rr));
+	else if(pw_set) rr = ~0;
+	else if(sw_wdata.wget( ) matches tagged Valid .v) begin
+		let wdata = tpl_1(v) & tpl_2(v);
+		{#- Software write effect per the SystemRDL onwrite property. -#}
+		{%if attr['woclr']%}
+		rr = rr & ~wdata;
+		{%elif attr['woset']%}
+		rr = rr | wdata;
+		{%elif attr['wot']%}
+		rr = rr ^ wdata;
+		{%elif attr['wzc']%}
+		rr = rr & (tpl_1(v) | ~tpl_2(v));
+		{%elif attr['wzs']%}
+		rr = rr | (~tpl_1(v) & tpl_2(v));
+		{%elif attr['wclr']%}
+		rr = 0;
+		{%elif attr['wset']%}
+		rr = ~0;
+		{%else%}
+		rr = (wdata | (~tpl_2(v) & rr));
+		{%endif%}
+	end
 	else if(hw_wdata.wget( ) matches tagged Valid .v) rr = v;
 	else if(r_incr.wget( ) matches tagged Valid .v)   rr = r + v;
 	else if(r_decr.wget( ) matches tagged Valid .v)   rr = r - v;
@@ -93,6 +119,16 @@ method Bool xored();
 	return ^r==1;
 endmethod
 {%endif%}
+{%if attr['hwset']%}
+method Action hwset();
+	pw_set.send();
+endmethod
+{%endif%}
+{%if attr['hwclr']%}
+method Action hwclr();
+	pw_clear.send();
+endmethod
+{%endif%}
 method Action clear();
 	pw_clear.send();
 endmethod
@@ -119,14 +155,13 @@ interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;
 {%if attr['sw_writable']%}
 method Action write(Bit#({{node.width}}) data, Bit#({{node.width}}) wstrb);
 	let mod=False;
-	{%if attr['sw'] in ['AccessType.rw','AccessType.w']%} sw_wdata.wset(tuple2(data,wstrb));{%endif%}
+	sw_wdata.wset(tuple2(data,wstrb));
     if (wstrb !=0)begin
-	    {%if attr['swmod']%} mod=(data!=r);{%endif%}
 	    {%if attr['swacc']%} pw_swacc.send();{%endif%}
-	    {%if attr['woclr']%} if(data ==1) pw_clear.send();{%endif%}
-	    {%if attr['woset']%}if( data ==1) pw_set.send();{%endif%}
-        {%if attr['swmod'] and  attr['woclr']%} mod=(r!=0);{%endif%}
-        {%if attr['swmod'] and attr['woset']%} mod=(r!=1); {%endif%}
+	    {%if attr['swmod'] and attr['woclr']%} mod=((r & data & wstrb)!=0);
+	    {%elif attr['swmod'] and attr['woset']%} mod=((~r & data & wstrb)!=0);
+	    {%elif attr['swmod']%} mod=((data & wstrb)!=(r & wstrb));
+	    {%endif%}
 	    if(mod)
 		    pw_swmod.send();
     end
@@ -136,10 +171,10 @@ endmethod
 method ActionValue#(Bit#({{node.width}})) read;
 	let rv=0;
 	let mod=False;
-	{%if attr['sw_acc']%} pw_swacc.send(); {%endif%}
+	{%if attr['swacc']%} pw_swacc.send(); {%endif%}
         {%if attr['rclr']%} pw_clear.send();{%endif%}
-        {%if attr['swmod'] and  attr['rclr']%} mod=(r!=0); {%endif%}
-{%if attr['swmod'] and attr['rset']%} mod=(r!=1))  ; {%endif%}
+        {%if attr['swmod'] and attr['rclr']%} mod=(r!=0); {%endif%}
+        {%if attr['swmod'] and attr['rset']%} mod=(r!= ~0); {%endif%}
 {%if attr['rset']%} pw_set.send(); {%endif%}
 	if(mod)
 		pw_swmod.send();
@@ -148,6 +183,9 @@ method ActionValue#(Bit#({{node.width}})) read;
 endmethod
 {%endif%}
 endinterface
+method Bit#({{node.width}}) currentValue();
+	return r;
+endmethod
 endmodule
 {%if gentest%}
 (*synthesize*)

@@ -1,26 +1,35 @@
 """Write Bluespec Register file."""
 from systemrdl import RDLListener
 
+from .common import HierarchyMixin
 
-class PrintBSVReg(RDLListener):
+
+class PrintBSVReg(HierarchyMixin, RDLListener):
     """Write Register defination file."""
 
-    def __init__(self, bsvfile, test):
+    def __init__(self, bsvfile, test, default_regwidth):
         """Initialize."""
         self.file = bsvfile
         self.gentest = test
-        self.addressmap = []
+        self.hier = []
+        self.default_regwidth = default_regwidth
 
     def enter_Addrmap(self, node):
         """Addressmap Handler."""
-        self.addrmap_name = node.get_path_segment()
-        print(f"import {self.addrmap_name}_signal::*;", file=self.file)
-        self.addressmap.append(node.get_path_segment())
+        if not self.hier:
+            # All registers, including those of nested addrmaps, use the
+            # signal package generated for the top addrmap.
+            self.addrmap_name = node.get_path_segment()
+            print(f"import {self.addrmap_name}_signal::*;", file=self.file)
+        self._enter_scope(node)
+
+    def exit_Addrmap(self, node):
+        """Addressmap Handler."""
+        self._exit_scope(node)
 
     def enter_Reg(self, node):
         """RegHandler."""
-        self.reg_name = node.get_path_segment()
-        self.hier_path = [*self.addressmap, self.reg_name]
+        self.reg_name = self._reg_name(node)
         self.interface = ""
         self.reg_val = []
         self.instance = ""
@@ -31,9 +40,9 @@ class PrintBSVReg(RDLListener):
     def enter_Field(self, node):
         """Field Handler."""
         self.signal_name = node.get_path_segment()
-        reset = "0"
-        if "reset" in node.inst.properties:
-            reset = node.inst.properties["reset"]
+        reset = node.get_property("reset")
+        if reset is None:
+            reset = 0
         self.interface += (
             f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name};\n"
         )
@@ -41,23 +50,28 @@ class PrintBSVReg(RDLListener):
         self.method += f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name} = sig_{self.signal_name}.hw;\n"
         if node.is_sw_writable:
             self.write_method += f"sig_{self.signal_name}.bus.write(data[{node.high}:{node.low}],wstrb[{node.high}:{node.low}]);\n"
-        # print(
-        #     self.reg_name,
-        #     self.signal_name,
-        #     node.is_sw_writable,
-        #     node.is_sw_readable,
-        #     node.inst.properties,
-        # )
         if node.is_sw_readable:
             self.read_method += f"let var_{self.signal_name}<-sig_{self.signal_name}.bus.read();\nrv[{node.high}:{node.low}]=var_{self.signal_name};\n"
-        if node.is_hw_readable:
-            self.reg_val.append((f"sig_{self.signal_name}.hw", node.high, node.low))
-        else:
-            self.reg_val.append((f"{node.width}'b0", node.high, node.low))
+        # currentValue() is always present on Ifc_CSRSignal_* regardless of
+        # hw/sw access mode (see config_signal.bsv), so the register-level
+        # value() aggregation always reflects the field's real stored value
+        # — previously this hardcoded a literal 0 for hw=w fields (e.g.
+        # INTERRUPT, STS), since the hw sub-interface only exposes _read
+        # when hw_readable, with no equivalent fallback for hw=w.
+        self.reg_val.append(
+            (f"sig_{self.signal_name}.currentValue()", node.high, node.low)
+        )
 
     def exit_Reg(self, node):
         """Write out register file."""
-        width = node.inst.properties["regwidth"]
+        if "regwidth" in node.list_properties():
+            width = node.get_property("regwidth")
+        elif self.default_regwidth is not None:
+            width = self.default_regwidth
+        else:
+            # SystemRDL spec default (32).
+            width = node.get_property("regwidth")
+
         value_method = []
         value_method.append("let rv=0;")
         for r in self.reg_val:
