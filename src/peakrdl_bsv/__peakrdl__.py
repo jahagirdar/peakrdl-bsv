@@ -32,6 +32,13 @@ class Exporter(ExporterSubcommandPlugin):  # pylint: disable=too-few-public-meth
             type=bool,
             help="generate verilog test code",
         )
+        arg_group.add_argument(
+            "--default_regwidth",
+            dest="default_regwidth",
+            default=None,
+            type=int,
+            help="Default regwidth",
+        )
 
     def do_export(
         self, top_node: "Union[AddrmapNode, RootNode]", options: "argparse.Namespace"
@@ -49,4 +56,5 @@ class Exporter(ExporterSubcommandPlugin):  # pylint: disable=too-few-public-meth
             rename=options.inst_name,
             depth=options.depth,
             test=options.test,
+            default_regwidth=options.default_regwidth,
         )

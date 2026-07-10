@@ -16,6 +16,13 @@ from systemrdl import RDLCompiler, RDLWalker
 from .print_bsv_signal import PrintBSVSignal
 from .print_bsv_reg import PrintBSVReg
 from .print_bsv_csr import PrintBSVCSR
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(module)s %(funcName)s %(lineno)d %(levelname)s:: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 class BSVExporter:  # pylint: disable=too-few-public-methods
@@ -29,8 +36,12 @@ class BSVExporter:  # pylint: disable=too-few-public-methods
         rename: Optional[str] = None,
         depth: int = 0,
         test: bool = False,
+        default_regwidth=None,
     ):
         """Writeout the BSV code."""
+        logger.info(
+            f"Options {top_node=}, {outputpath=}, {input_files=}, {rename=}, {depth=}, {test=}, {default_regwidth=}"
+        )
         rdlc = RDLCompiler()
         try:
             for input_file in input_files:
@@ -38,13 +49,13 @@ class BSVExporter:  # pylint: disable=too-few-public-methods
                 root = rdlc.elaborate()
         except Exception:
             sys.exit()
-        fname = f"{outputpath}/{top_node.inst.inst_name}"
+        fname = f"{outputpath}/{top_node.inst_name}"
         with open(fname + "_signal.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVSignal(file, test))
+            walker.walk(root, PrintBSVSignal(file, test, default_regwidth))
         with open(fname + "_reg.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVReg(file, test))
+            walker.walk(root, PrintBSVReg(file, test, default_regwidth))
         with open(fname + "_csr.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVCSR(file, test))
+            walker.walk(root, PrintBSVCSR(file, test, default_regwidth))

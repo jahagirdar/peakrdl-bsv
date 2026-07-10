@@ -34,6 +34,13 @@ csr.reg.signal.write(...)
 endrule
 ```
 
+There are two interfaces, S/W Interface and H/W Interface.
+
+The S/W interface is used by protocols like AXI, AHB etc.
+these protocols use the bus subinterface to read/write to signals.
+Signals will have read methods of they are marked sw=r or sw=rw ... in systemrdl file
+Signals will have write methods if they are marked sw=w,sw=rw ...  in systemrdl file
+
 The hardware side methods defined on a signal module are
 
 * `method Bool pulse()` returns true when a 1 is written to the signal. self clearing.

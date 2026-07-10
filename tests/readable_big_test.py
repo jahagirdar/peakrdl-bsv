@@ -99,5 +99,5 @@ field {sw=r;desc="major_rev";} major_rev[23:16]=10;
     root = rdlc.elaborate()
     walker = RDLWalker(unroll=True)
     with open("test" + "_reg.bsv", "w") as file:
-        walker.walk(root, PrintBSVReg(file, False))
+        walker.walk(root, PrintBSVReg(file, False, 32))
         assert 1
