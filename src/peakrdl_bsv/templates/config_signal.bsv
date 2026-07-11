@@ -62,7 +62,14 @@ rule r_write;
 	{%if attr['singlepulse']%} rr = 0;{%endif%}
 	if(pw_clear) rr =0;
 	else if(pw_set) rr = ~0;
-	else if(sw_wdata.wget( ) matches tagged Valid .v) begin
+	{%- set sw_write_block %}
+	{#- The register-level write() method calls every field's bus.write()
+	    on any write to the parent register, even for fields whose bytes
+	    weren't targeted (wstrb=0 for this field's slice). Guard on a
+	    nonzero wstrb so a zero-strobe write to a sibling field can't
+	    spuriously win this branch and starve a genuine same-cycle hw
+	    write. -#}
+	else if(sw_wdata.wget( ) matches tagged Valid .v &&& (tpl_2(v) != 0)) begin
 		let wdata = tpl_1(v) & tpl_2(v);
 		{#- Software write effect per the SystemRDL onwrite property. -#}
 		{%if attr['woclr']%}
@@ -83,7 +90,20 @@ rule r_write;
 		rr = (wdata | (~tpl_2(v) & rr));
 		{%endif%}
 	end
+	{%- endset %}
+	{%- set hw_write_block %}
 	else if(hw_wdata.wget( ) matches tagged Valid .v) rr = v;
+	{%- endset %}
+	{#- SystemRDL precedence property (default sw): decides which of a
+	    simultaneous hw write and sw write wins by checking that side's
+	    branch first in this if/elif chain. -#}
+	{%if attr['precedence'] == 'PrecedenceType.hw'%}
+	{{ hw_write_block }}
+	{{ sw_write_block }}
+	{%else%}
+	{{ sw_write_block }}
+	{{ hw_write_block }}
+	{%endif%}
 	else if(r_incr.wget( ) matches tagged Valid .v)   rr = r + v;
 	else if(r_decr.wget( ) matches tagged Valid .v)   rr = r - v;
 	r<=rr;

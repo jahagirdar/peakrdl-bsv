@@ -11,6 +11,7 @@ Run:
     pytest test_peakrdl_bsv.py -v
 """
 
+import logging
 import os
 import re
 import sys
@@ -599,6 +600,76 @@ class TestOnwrite:
         assert _has(
             bsv["signal"], r"rr\s*=\s*rr\s*\|\s*wdata"
         ), "onwrite=woset must OR the write-enabled bits into the field"
+
+
+# ===========================================================================
+# 9b. PRECEDENCE PROPERTY
+# ===========================================================================
+
+
+class TestPrecedence:
+    """Tests for the hw-vs-sw simultaneous-write precedence property."""
+
+    def _rdl(self, precedence=None):
+        prec_line = f"precedence = {precedence};" if precedence else ""
+        return textwrap.dedent(
+            f"""\
+            addrmap test {{
+                reg test_reg {{
+                    field {{ sw = rw; hw = rw; {prec_line} }} field0[8] = 0;
+                }};
+                test_reg reg0 @ 0x0;
+            }};
+        """
+        )
+
+    def _r_write_rule(self, sig):
+        m = re.search(r"rule r_write;.*?endrule", sig, re.S)
+        assert m, "r_write rule must be present"
+        return m.group(0)
+
+    def test_default_precedence_is_sw_first(self, tmpdir_str):
+        # SystemRDL default precedence (unassigned) is sw.
+        bsv = _compile_and_export(self._rdl(), tmpdir_str)
+        rule = self._r_write_rule(bsv["signal"])
+        sw_pos = rule.index("sw_wdata.wget")
+        hw_pos = rule.index("hw_wdata.wget")
+        assert sw_pos < hw_pos, "default precedence must check sw_wdata before hw_wdata"
+
+    def test_explicit_sw_precedence_checks_sw_first(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("sw"), tmpdir_str)
+        rule = self._r_write_rule(bsv["signal"])
+        sw_pos = rule.index("sw_wdata.wget")
+        hw_pos = rule.index("hw_wdata.wget")
+        assert sw_pos < hw_pos, "precedence=sw must check sw_wdata before hw_wdata"
+
+    def test_explicit_hw_precedence_checks_hw_first(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("hw"), tmpdir_str)
+        rule = self._r_write_rule(bsv["signal"])
+        sw_pos = rule.index("sw_wdata.wget")
+        hw_pos = rule.index("hw_wdata.wget")
+        assert hw_pos < sw_pos, "precedence=hw must check hw_wdata before sw_wdata"
+
+    def test_precedence_no_longer_warns(self, tmpdir_str, caplog):
+        with caplog.at_level(logging.WARNING):
+            _compile_and_export(self._rdl("hw"), tmpdir_str)
+        assert not any(
+            "precedence" in rec.message for rec in caplog.records
+        ), "precedence is now implemented and must not be flagged as unsupported"
+
+    def test_sw_branch_guarded_against_zero_strobe(self, tmpdir_str):
+        # The register-level write() method calls bus.write() on every
+        # field whenever the parent register is written, even for fields
+        # whose bytes weren't targeted (wstrb=0 for that field's slice).
+        # Without a nonzero-wstrb guard, that spurious sw_wdata validity
+        # would win the mutually-exclusive else-if chain and starve a
+        # genuine same-cycle hw write, regardless of precedence=.
+        bsv = _compile_and_export(self._rdl(), tmpdir_str)
+        rule = self._r_write_rule(bsv["signal"])
+        assert _has(
+            rule,
+            r"sw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(tpl_2\(v\)\s*!=\s*0\)",
+        ), "sw_wdata branch must be guarded on a nonzero wstrb"
 
 
 # ===========================================================================

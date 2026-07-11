@@ -26,10 +26,6 @@ UNSUPPORTED_FIELD_PROPS = (
     # Per-bit hw update masking: hw may update every bit of the field.
     "hwenable",
     "hwmask",
-    # hw-vs-sw contention order: the generated r_write rule always applies
-    # a fixed priority (clear > set > sw write > hw write > incr > decr)
-    # regardless of what precedence= specifies.
-    "precedence",
     # Combinational next-value expression: not wired into the generated
     # storage rule.
     "next",
@@ -102,6 +98,10 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
             attr["sw"] = f"{attr['sw']}"
         if "hw" in attr:
             attr["hw"] = f"{attr['hw']}"
+        # precedence has a spec default (sw) even when not explicitly
+        # assigned, so always resolve it rather than gating on presence
+        # in list_properties() like the other properties above.
+        attr["precedence"] = f"{node.get_property('precedence')}"
         for prop in UNSUPPORTED_FIELD_PROPS:
             # Membership, not truthiness: several of these (incrvalue,
             # decrwidth, threshold, ...) are integer-valued and a
