@@ -366,11 +366,10 @@ def test_singlepulse(tmp_path):
         # ruser/wuser are only legal on external instances per the spec.
         "addrmap top { external reg { field {sw=rw; onread=ruser; hw=w;} f[7:0]=0; } r1; };",
         "addrmap top { external reg { field {sw=rw; onwrite=wuser; hw=r;} f[7:0]=0; } r1; };",
-        reg_rdl("field {intr; sw=rw; woclr; hw=w;} f[0:0]=0;"),
         reg_rdl("field {sw=w1; hw=r;} f[7:0]=0;"),
         reg_rdl("field {sw=rw1; hw=r;} f[7:0]=0;"),
     ],
-    ids=["ruser", "wuser", "intr", "w1", "rw1"],
+    ids=["ruser", "wuser", "w1", "rw1"],
 )
 def test_unsupported_field_property_warns(rdl, tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="peakrdl_bsv.print_bsv_signal"):

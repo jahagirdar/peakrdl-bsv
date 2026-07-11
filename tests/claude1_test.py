@@ -1172,6 +1172,135 @@ class TestStickyStickybit:
 
 
 # ===========================================================================
+#  9f. INTERRUPT/HALT AGGREGATION  (intr, enable/mask, haltenable/haltmask)
+# ===========================================================================
+
+
+class TestInterruptAggregation:
+    """Tests for the register-level interrupt/halt aggregate ConfigReg
+    builds by OR-reducing every intr field's (qualified) current value.
+
+    enable/mask/haltenable/haltmask are only modeled as a `signal`
+    reference, same limitation as we/wel/etc (a Field/PropertyReference
+    value doesn't resolve through this compiler's namespace lookup).
+    """
+
+    def test_bare_intr_generates_interrupt_method(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                reg r1 {
+                    field { sw = rw; hw = w; woclr; intr; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        reg = bsv["reg"]
+        assert _has(
+            reg, r"method Bool interrupt\(\)"
+        ), "an intr field must generate a register-level interrupt() method"
+        assert _has(
+            reg, r"\|\(sig_f0\.currentValue\(\)\)\s*==\s*1'b1"
+        ), "interrupt() must OR-reduce the field's current value"
+
+    def test_no_intr_fields_omits_interrupt_method(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                reg r1 {
+                    field { sw = rw; hw = r; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        assert _not_has(
+            bsv["reg"], r"method Bool interrupt"
+        ), "a register with no intr fields must not generate interrupt()"
+
+    def test_multiple_intr_fields_or_together(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                reg r1 {
+                    field { sw = rw; hw = w; woclr; intr; } f0[8] = 0;
+                    field { sw = rw; hw = w; woclr; intr; } f1[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        reg = bsv["reg"]
+        assert _has(reg, r"sig_f0\.currentValue\(\)")
+        assert _has(reg, r"sig_f1\.currentValue\(\)")
+        assert _has(
+            reg, r"return .*\|\|.*;"
+        ), "multiple intr fields must be OR'd together into one interrupt()"
+
+    def test_enable_qualifies_which_bits_count(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} en_sig[8];
+                reg r1 {
+                    field { sw = rw; hw = w; woclr; intr; enable = en_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        assert _has(
+            bsv["reg"], r"sig_f0\.currentValue\(\)\s*&\s*w_ext_\S+"
+        ), "enable must AND-mask the field's contribution to the aggregate"
+        assert _has(
+            bsv["csr"], r"method Action set_ext_\S+\(Bit#\(8\) v\)"
+        ), "enable's signal must be relayed all the way to a top-level CSR port"
+
+    def test_mask_inverts_the_qualification(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} mask_sig[8];
+                reg r1 {
+                    field { sw = rw; hw = w; woclr; intr; mask = mask_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        assert _has(
+            bsv["reg"], r"sig_f0\.currentValue\(\)\s*&\s*~w_ext_\S+"
+        ), "mask must AND the field's contribution with the *complement* of the signal"
+
+    def test_haltenable_generates_separate_halt_method(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} halt_sig[8];
+                reg r1 {
+                    field { sw = rw; hw = w; woclr; intr; haltenable = halt_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        reg = bsv["reg"]
+        assert _has(
+            reg, r"method Bool halt\(\)"
+        ), "haltenable must generate a separate halt() method"
+        assert _has(
+            reg, r"method Bool interrupt\(\)"
+        ), "the field must still contribute to interrupt() unconditionally"
+
+
+# ===========================================================================
 # 10. REGISTER-LEVEL STRUCTURE
 # ===========================================================================
 

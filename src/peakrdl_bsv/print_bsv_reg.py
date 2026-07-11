@@ -56,6 +56,11 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
         # see print_bsv_signal.py._resolve_resetsignal for why this can't
         # reuse the Action-method ext_signals mechanism above).
         self.reg_reset_ports = []
+        # BSV Bool expressions contributing to this register's
+        # interrupt/halt aggregate (one per intr field with
+        # haltenable/haltmask set, for halt).
+        self.intr_terms = []
+        self.halt_terms = []
 
     def enter_Field(self, node):
         """Field Handler."""
@@ -96,6 +101,40 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
             self.reg_ext_signals[port] = sig.width
             self.ext_signal_consumers.append((self.signal_name, port))
 
+        # intr: this field contributes to the register's interrupt
+        # aggregate (see exit_Reg). enable/mask (mutually exclusive) and
+        # haltenable/haltmask qualify which bits count -- only a
+        # `signal` reference is modeled, same limitation as we/wel etc.
+        # Consumed locally here (via a Wire declared alongside the other
+        # ext_signals, but never relayed to any field), not pushed down.
+        if node.get_property("intr"):
+            enable_sig = resolve_signal_ref(node, "enable")
+            mask_sig = resolve_signal_ref(node, "mask")
+            value_expr = f"sig_{self.signal_name}.currentValue()"
+            if enable_sig is not None:
+                port = signal_port_name(enable_sig)
+                self.reg_ext_signals[port] = enable_sig.width
+                value_expr = f"({value_expr} & w_{port})"
+            elif mask_sig is not None:
+                port = signal_port_name(mask_sig)
+                self.reg_ext_signals[port] = mask_sig.width
+                value_expr = f"({value_expr} & ~w_{port})"
+            self.intr_terms.append(f"(|({value_expr}) == 1'b1)")
+
+            haltenable_sig = resolve_signal_ref(node, "haltenable")
+            haltmask_sig = resolve_signal_ref(node, "haltmask")
+            if haltenable_sig is not None or haltmask_sig is not None:
+                halt_expr = f"sig_{self.signal_name}.currentValue()"
+                if haltenable_sig is not None:
+                    port = signal_port_name(haltenable_sig)
+                    self.reg_ext_signals[port] = haltenable_sig.width
+                    halt_expr = f"({halt_expr} & w_{port})"
+                else:
+                    port = signal_port_name(haltmask_sig)
+                    self.reg_ext_signals[port] = haltmask_sig.width
+                    halt_expr = f"({halt_expr} & ~w_{port})"
+                self.halt_terms.append(f"(|({halt_expr}) == 1'b1)")
+
     def exit_Reg(self, node):
         """Write out register file."""
         if "regwidth" in node.list_properties():
@@ -132,6 +171,22 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
             f"rule rl_relay_{port}_{field};\n    sig_{field}.set_{port}(w_{port});\nendrule"
             for field, port in self.ext_signal_consumers
         )
+        # Interrupt/halt aggregates: an OR-reduction across every intr
+        # field in this register (each field's bits qualified by its own
+        # enable/mask or haltenable/haltmask, if set). Only emitted when
+        # at least one field actually contributes.
+        interrupt_iface = "method Bool interrupt();" if self.intr_terms else ""
+        interrupt_impl = (
+            f"method Bool interrupt();\n    return {' || '.join(self.intr_terms)};\nendmethod"
+            if self.intr_terms
+            else ""
+        )
+        halt_iface = "method Bool halt();" if self.halt_terms else ""
+        halt_impl = (
+            f"method Bool halt();\n    return {' || '.join(self.halt_terms)};\nendmethod"
+            if self.halt_terms
+            else ""
+        )
         # resetsignal: a plain pass-through constructor argument (not a
         # Wire/method/relay-rule triple like the ext_signals above --
         # see print_bsv_signal.py._resolve_resetsignal), since it just
@@ -146,7 +201,8 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
 interface ConfigReg_HW_{self.reg_name};
     {self.interface}
     method Bit#({width}) value();
-
+    {interrupt_iface}
+    {halt_iface}
 endinterface
 
 interface ConfigReg_Bus_{self.reg_name};
@@ -169,6 +225,8 @@ interface ConfigReg_HW_{self.reg_name} hw;
     {value_method_joined}
     return rv;
     endmethod
+    {interrupt_impl}
+    {halt_impl}
 endinterface
 interface ConfigReg_Bus_{self.reg_name} bus;
     method Action write(Bit#({width}) data,Bit#({width}) wstrb);

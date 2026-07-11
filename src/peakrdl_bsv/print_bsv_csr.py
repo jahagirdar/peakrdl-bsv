@@ -16,7 +16,23 @@ logger = logging.getLogger(__name__)
 #: Field properties whose value may be an external `signal` reference
 #: that must be exposed as a top-level ConfigCSR input and relayed down
 #: to whichever register(s) contain a consuming field.
-_EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel", "hwenable", "hwmask", "next")
+_EXT_SIGNAL_PROPS = (
+    "we",
+    "wel",
+    "swwe",
+    "swwel",
+    "hwenable",
+    "hwmask",
+    "next",
+    # enable/mask/haltenable/haltmask qualify a register's intr/halt
+    # aggregate (built entirely in print_bsv_reg.py); this module
+    # doesn't need to know that -- it just relays whatever port each
+    # register's own reg_ext_signals dict says it needs.
+    "enable",
+    "mask",
+    "haltenable",
+    "haltmask",
+)
 
 
 class PrintBSVCSR(HierarchyMixin, RDLListener):

@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 UNSUPPORTED_FIELD_PROPS = (
     "ruser",
     "wuser",
-    "intr",
 )
 
 
