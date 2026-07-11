@@ -8,9 +8,10 @@ Two layers of checking:
    additionally elaborated with bsc, so the generated code is known to be
    legal BSV, not just plausible-looking text.
 
-Features the generator does NOT model (ruser/wuser, sticky/stickybit, intr
-side outputs, external registers, memories, write-once enforcement) must
-produce an explicit warning instead of silently wrong RTL.
+Features the generator does NOT model (ruser/wuser -- these require full
+external-register bus forwarding, a different architecture entirely --
+and write-once enforcement) must produce an explicit warning instead of
+silently wrong RTL.
 """
 import logging
 import re
@@ -67,9 +68,31 @@ FIELD_FEATURES = {
     "counter": "field {sw=r; hw=r; counter;} f[7:0]=0;",
     "reductions": "field {sw=rw; hw=r; anded; ored; xored;} f[7:0]=0;",
     "intr": "field {intr; sw=rw; woclr; hw=w;} f[0:0]=0;",
+    "intr_posedge": "field {posedge intr; sw=rw; woclr; hw=w;} f[0:0]=0;",
+    "intr_multi_field": (
+        "field {sw=rw; hw=w; woclr; intr;} f0[7:0]=0; "
+        "field {sw=rw; hw=w; woclr; intr;} f1[15:8]=0;"
+    ),
     "sticky": "field {sw=rw; hw=w; sticky;} f[7:0]=0;",
     "stickybit": "field {sw=rw; hw=w; stickybit;} f[0:0]=0;",
     "multifield": "field {sw=rw; hw=r;} a[3:0]=1; field {sw=rw; hw=r;} b[15:8]=2;",
+    # --- precedence ---
+    "precedence_hw": "field {sw=rw; hw=rw; precedence=hw;} f[7:0]=0;",
+    "precedence_sw": "field {sw=rw; hw=rw; precedence=sw;} f[7:0]=0;",
+    # --- counter refinements (bare `counter` is covered above) ---
+    "incrvalue": "field {sw=r; hw=r; counter; incrvalue=5;} f[7:0]=0;",
+    "decrvalue": "field {sw=r; hw=r; counter; decrvalue=3;} f[7:0]=0;",
+    "incrwidth": "field {sw=r; hw=r; counter; incrwidth=4;} f[7:0]=0;",
+    "decrwidth": "field {sw=r; hw=r; counter; decrwidth=4;} f[7:0]=0;",
+    "incrsaturate": "field {sw=r; hw=r; counter; incrsaturate;} f[7:0]=0;",
+    "decrsaturate": "field {sw=r; hw=r; counter; decrsaturate;} f[7:0]=0;",
+    "incrsaturate_value": "field {sw=r; hw=r; counter; incrsaturate=200;} f[7:0]=0;",
+    "incrthreshold": "field {sw=r; hw=r; counter; incrthreshold=200;} f[7:0]=0;",
+    "overflow": "field {sw=r; hw=r; counter; overflow;} f[7:0]=0;",
+    "underflow": "field {sw=r; hw=r; counter; underflow;} f[7:0]=0;",
+    "bidirectional_counter": (
+        "field {sw=r; hw=r; counter; incrwidth=8; decrwidth=8;} f[7:0]=0;"
+    ),
 }
 
 STRUCT_FEATURES = {
@@ -89,6 +112,23 @@ STRUCT_FEATURES = {
         addrmap top { sub s1; };""",
     "memory": "addrmap top { reg { field {sw=rw; hw=r;} f[7:0]=0; } r1; external mem { mementries=16; memwidth=32; sw=rw; } m1; };",
     "external_reg": "addrmap top { external reg { field {sw=rw; hw=rw;} f[7:0]=0; } r1; };",
+    # --- properties whose value is an external `signal` reference (the
+    # only dynamic form these resolve -- see common.resolve_signal_ref)
+    # -- these need addrmap-level `signal {}` declarations, which the
+    # single-field-body FIELD_FEATURES/reg_rdl() wrapper has no slot for.
+    "we_signal": "addrmap top { signal {} we_sig; reg { field {sw=rw; hw=rw; we=we_sig;} f[7:0]=0; } r1; };",
+    "wel_signal": "addrmap top { signal {} wel_sig; reg { field {sw=rw; hw=rw; wel=wel_sig;} f[7:0]=0; } r1; };",
+    "swwe_signal": "addrmap top { signal {} swwe_sig; reg { field {sw=rw; hw=rw; swwe=swwe_sig;} f[7:0]=0; } r1; };",
+    "swwel_signal": "addrmap top { signal {} swwel_sig; reg { field {sw=rw; hw=rw; swwel=swwel_sig;} f[7:0]=0; } r1; };",
+    "hwenable_signal": "addrmap top { signal {} en_sig[8]; reg { field {sw=rw; hw=rw; hwenable=en_sig;} f[7:0]=0; } r1; };",
+    "hwmask_signal": "addrmap top { signal {} mask_sig[8]; reg { field {sw=rw; hw=rw; hwmask=mask_sig;} f[7:0]=0; } r1; };",
+    "next_signal": "addrmap top { signal {} next_sig[8]; reg { field {sw=r; hw=rw; next=next_sig;} f[7:0]=0; } r1; };",
+    "resetsignal_activehigh": "addrmap top { signal {activehigh;} rst_sig; reg { field {sw=rw; hw=r; resetsignal=rst_sig;} f[7:0]=0; } r1; };",
+    "resetsignal_activelow": "addrmap top { signal {activelow;} rst_sig; reg { field {sw=rw; hw=r; resetsignal=rst_sig;} f[7:0]=0; } r1; };",
+    "intr_enable": "addrmap top { signal {} en_sig[8]; reg { field {sw=rw; hw=w; woclr; intr; enable=en_sig;} f[7:0]=0; } r1; };",
+    "intr_mask": "addrmap top { signal {} mask_sig[8]; reg { field {sw=rw; hw=w; woclr; intr; mask=mask_sig;} f[7:0]=0; } r1; };",
+    "intr_haltenable": "addrmap top { signal {} halt_sig[8]; reg { field {sw=rw; hw=w; woclr; intr; haltenable=halt_sig;} f[7:0]=0; } r1; };",
+    "intr_haltmask": "addrmap top { signal {} halt_sig[8]; reg { field {sw=rw; hw=w; woclr; intr; haltmask=halt_sig;} f[7:0]=0; } r1; };",
 }
 
 ALL_FEATURES = {**{k: reg_rdl(v) for k, v in FIELD_FEATURES.items()}, **STRUCT_FEATURES}
