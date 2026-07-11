@@ -78,6 +78,13 @@ def _not_has(text: str, pattern: str) -> bool:
     return not _has(text, pattern)
 
 
+def _r_write_rule(sig: str, module: str = "mkCSRSignal") -> str:
+    """Extract one signal module's r_write rule body."""
+    m = re.search(rf"module {module}\S*?\(.*?rule r_write;(.*?)endrule", sig, re.S)
+    assert m, f"r_write rule for {module} must be present"
+    return m.group(1)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -857,6 +864,100 @@ class TestPrecedence:
             rule,
             r"sw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(tpl_2\(v\)\s*!=\s*0\)",
         ), "sw_wdata branch must be guarded on a nonzero wstrb"
+
+
+# ===========================================================================
+#  9b. EXTERNAL SIGNAL GATING  (we/wel)
+# ===========================================================================
+
+
+class TestExternalSignalGating:
+    """Tests for we/wel hw write-enable gated by an external `signal`.
+
+    Only a `signal` reference is modeled (a Field/PropertyReference value
+    is valid per the SystemRDL spec but doesn't resolve through this
+    compiler's namespace lookup for simple instance-name references, the
+    same limitation `next` hit), and the plain bool form needs no special
+    handling since it matches the always-writable default.
+    """
+
+    def _rdl(self, prop, reg_name="r1", extra_field=""):
+        return textwrap.dedent(
+            f"""\
+            addrmap topmap {{
+                signal {{}} gate_sig;
+                reg {reg_name} {{
+                    field {{ sw = rw; hw = rw; {prop} = gate_sig; }} f0[8] = 0;
+                    {extra_field}
+                }};
+                {reg_name} reg1 @ 0x0;
+            }};
+        """
+        )
+
+    def test_we_generates_top_level_port_and_gates_hw_write(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("we"), tmpdir_str)
+        sig = _r_write_rule(bsv["signal"])
+        assert _has(
+            sig,
+            r"hw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(w_ext_\S+==1\)",
+        ), "we must gate the hw write branch on the external signal == 1"
+        assert _has(
+            bsv["csr"], r"method Action set_ext_\S+\(Bit#\(1\) v\)"
+        ), "we must expose a top-level ConfigCSR input for the signal"
+
+    def test_wel_gates_hw_write_active_low(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("wel"), tmpdir_str)
+        sig = _r_write_rule(bsv["signal"])
+        assert _has(
+            sig,
+            r"hw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(w_ext_\S+==0\)",
+        ), "wel must gate the hw write branch on the external signal == 0"
+
+    def test_we_true_bool_has_no_port_or_gating(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap topmap {
+                reg r1 {
+                    field { sw = rw; hw = rw; we = true; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        assert _not_has(
+            bsv["signal"], r"set_ext_"
+        ), "we=true must not generate an external signal port"
+
+    def test_shared_signal_deduped_at_csr_level(self, tmpdir_str):
+        # Two fields (in the same register here) referencing the same
+        # signal must produce exactly one top-level port, not two.
+        bsv = _compile_and_export(
+            self._rdl(
+                "we",
+                extra_field="field { sw = rw; hw = rw; we = gate_sig; } f1[8] = 0;",
+            ),
+            tmpdir_str,
+        )
+        # One port appears twice in the generated text (interface
+        # declaration + module implementation) -- what must be deduped
+        # is the number of *distinct* port names, not raw occurrences.
+        ports = set(re.findall(r"method Action (set_ext_\S+)\(", bsv["csr"]))
+        assert len(ports) == 1, (
+            "a signal referenced by multiple fields must be exposed as "
+            f"exactly one distinct ConfigCSR input, got {ports}"
+        )
+
+    def test_reg_module_relays_signal_to_field(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("we"), tmpdir_str)
+        reg = bsv["reg"]
+        assert _has(
+            reg, r"method Action set_ext_\S+\(Bit#\(1\) v\)"
+        ), "ConfigReg must expose a relay input for the signal"
+        assert _has(
+            reg, r"rule rl_relay_ext_\S+;\s*sig_f0\.set_ext_\S+\(w_ext_\S+\);\s*endrule"
+        ), "ConfigReg must relay the signal down to the consuming field"
 
 
 # ===========================================================================

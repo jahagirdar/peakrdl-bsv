@@ -47,6 +47,13 @@ interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;
 // value() aggregation (see print_bsv_reg.py) reads every field's current
 // stored value through this, rather than special-casing hw=r vs hw=w.
 method Bit#({{node.width}}) currentValue();
+{%for port, width in attr['ext_signals'].items()%}
+// Driven every cycle by an always-firing relay rule in the enclosing
+// ConfigReg/ConfigCSR modules (see print_bsv_reg.py/print_bsv_csr.py),
+// which thread this external `signal`'s value down from the top-level
+// module boundary.
+method Action set_{{port}}(Bit#({{width}}) v);
+{%endfor%}
 endinterface
 
 
@@ -61,6 +68,9 @@ PulseWire pw_swacc <-mkPulseWire();
 PulseWire pw_swmod <-mkPulseWire();
 RWire#(Tuple2#(Bit#({{node.width}}),Bit#({{node.width}})))sw_wdata <-mkRWire();
 RWire#(Bit#({{node.width}}))hw_wdata <-mkRWire();
+{%for port, width in attr['ext_signals'].items()%}
+Wire#(Bit#({{width}})) w_{{port}} <-mkDWire(0);
+{%endfor%}
 {%if attr['counter_up']%}
 {%if attr['incr_is_pulse']%}
 PulseWire pw_incr <-mkPulseWire();
@@ -117,7 +127,10 @@ rule r_write;
 	end
 	{%- endset %}
 	{%- set hw_write_block %}
-	else if(hw_wdata.wget( ) matches tagged Valid .v) rr = v;
+	{#- we/wel gate whether a genuine hw _write() call actually reaches
+	    the storage this cycle; unset/bool true is today's unconditional
+	    default. -#}
+	else if(hw_wdata.wget( ) matches tagged Valid .v{%if attr['we_port']%} &&& (w_{{attr['we_port']}}==1){%elif attr['wel_port']%} &&& (w_{{attr['wel_port']}}==0){%endif%}) rr = v;
 	{%- endset %}
 	{#- SystemRDL precedence property (default sw): decides which of a
 	    simultaneous hw write and sw write wins by checking that side's
@@ -294,6 +307,11 @@ endinterface
 method Bit#({{node.width}}) currentValue();
 	return r;
 endmethod
+{%for port, width in attr['ext_signals'].items()%}
+method Action set_{{port}}(Bit#({{width}}) v);
+	w_{{port}} <= v;
+endmethod
+{%endfor%}
 endmodule
 {%if gentest%}
 (*synthesize*)

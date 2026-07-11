@@ -1,7 +1,12 @@
 """Write Bluespec Register file."""
 from systemrdl import RDLListener
 
-from .common import HierarchyMixin
+from .common import HierarchyMixin, resolve_signal_ref, signal_port_name
+
+#: Field properties whose value may be an external `signal` reference
+#: that this register-level module needs to relay down to the
+#: consuming field's Ifc_CSRSignal_* module (see print_bsv_signal.py).
+_EXT_SIGNAL_PROPS = ("we", "wel")
 
 
 class PrintBSVReg(HierarchyMixin, RDLListener):
@@ -36,6 +41,11 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
         self.method = ""
         self.write_method = "//write methods\n"
         self.read_method = "//read methods\n"
+        # port_name -> width, deduped across every field in this register
+        # that references an external `signal`.
+        self.reg_ext_signals = {}
+        # (field_signal_name, port_name) pairs needing a relay rule.
+        self.ext_signal_consumers = []
 
     def enter_Field(self, node):
         """Field Handler."""
@@ -61,6 +71,13 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
         self.reg_val.append(
             (f"sig_{self.signal_name}.currentValue()", node.high, node.low)
         )
+        for prop in _EXT_SIGNAL_PROPS:
+            sig = resolve_signal_ref(node, prop)
+            if sig is None:
+                continue
+            port = signal_port_name(sig)
+            self.reg_ext_signals[port] = sig.width
+            self.ext_signal_consumers.append((self.signal_name, port))
 
     def exit_Reg(self, node):
         """Write out register file."""
@@ -77,6 +94,27 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
         for r in self.reg_val:
             value_method.append(f"rv[{r[1]}:{r[2]}]={r[0]};")
         value_method_joined = "\n".join(value_method)
+        # Relay ports for fields in this register that reference an
+        # external `signal` (we/wel, ...): one Action method + backing
+        # Wire per unique port on ConfigReg's own interface, plus an
+        # always-firing rule per consuming field forwarding the value
+        # down into that field's Ifc_CSRSignal_* module.
+        ext_signal_iface = "\n".join(
+            f"method Action set_{port}(Bit#({w}) v);"
+            for port, w in self.reg_ext_signals.items()
+        )
+        ext_signal_wires = "\n".join(
+            f"Wire#(Bit#({w})) w_{port} <-mkDWire(0);"
+            for port, w in self.reg_ext_signals.items()
+        )
+        ext_signal_impls = "\n".join(
+            f"method Action set_{port}(Bit#({w}) v);\n    w_{port} <= v;\nendmethod"
+            for port, w in self.reg_ext_signals.items()
+        )
+        ext_signal_relays = "\n".join(
+            f"rule rl_relay_{port}_{field};\n    sig_{field}.set_{port}(w_{port});\nendrule"
+            for field, port in self.ext_signal_consumers
+        )
         print(
             f"""
 interface ConfigReg_HW_{self.reg_name};
@@ -93,9 +131,12 @@ endinterface
 interface ConfigReg_{self.reg_name};
 interface ConfigReg_HW_{self.reg_name} hw;
 interface ConfigReg_Bus_{self.reg_name} bus;
+    {ext_signal_iface}
 endinterface
 module mkConfigReg_{self.reg_name}(ConfigReg_{self.reg_name});
     {self.instance}
+    {ext_signal_wires}
+    {ext_signal_relays}
 interface ConfigReg_HW_{self.reg_name} hw;
     {self.method}
     method Bit#({width}) value();
@@ -113,6 +154,7 @@ interface ConfigReg_Bus_{self.reg_name} bus;
     return rv;
     endmethod
 endinterface
+    {ext_signal_impls}
 endmodule
                   """,
             file=self.file,

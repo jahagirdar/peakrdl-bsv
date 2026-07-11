@@ -5,7 +5,7 @@ import sys
 from jinja2 import Environment, PackageLoader, select_autoescape
 from systemrdl import RDLCompiler, RDLListener, RDLWalker
 
-from .common import HierarchyMixin
+from .common import HierarchyMixin, resolve_signal_ref, signal_port_name
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,10 @@ UNSUPPORTED_FIELD_PROPS = (
     "sticky",
     "stickybit",
     "intr",
-    # Software/hardware write-enable gating: fields are always writable by
-    # their respective side regardless of these.
+    # Software write-enable gating: fields are always sw-writable
+    # regardless of these (implemented separately from we/wel below).
     "swwe",
     "swwel",
-    "we",
-    "wel",
     # Per-bit hw update masking: hw may update every bit of the field.
     "hwenable",
     "hwmask",
@@ -61,6 +59,34 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
                 "generator; internal storage is generated instead.",
                 self.reg_name,
             )
+
+    def _resolve_we_wel(self, node, attr, name):
+        """Resolve we/wel (hw write-enable gating): only a `signal`
+        reference is modeled (see common.resolve_signal_ref -- a Field/
+        PropertyReference value is a valid SystemRDL construct but, like
+        `next`, doesn't resolve through this compiler's namespace lookup
+        in practice). The plain bool form needs no handling: `we=true`/
+        unset is already the generator's default (hw always enabled to
+        write)."""
+        attr["we_port"] = None
+        attr["wel_port"] = None
+        for prop, attr_key in (("we", "we_port"), ("wel", "wel_port")):
+            value = node.get_property(prop)
+            if value is None or isinstance(value, bool):
+                continue
+            sig = resolve_signal_ref(node, prop)
+            if sig is not None:
+                attr[attr_key] = signal_port_name(sig)
+                attr["ext_signals"][attr[attr_key]] = 1
+            else:
+                logger.warning(
+                    "%s.%s: %s referencing a field/property (not a plain "
+                    "signal) is not supported by the BSV generator; the "
+                    "generated code ignores it.",
+                    self.reg_name,
+                    name,
+                    prop,
+                )
 
     def _resolve_counter_side(self, node, name, prop_value_name, bool_default):
         """Resolve a bool/int/dynamic-ref counter refinement property
@@ -175,6 +201,13 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
         # assigned, so always resolve it rather than gating on presence
         # in list_properties() like the other properties above.
         attr["precedence"] = f"{node.get_property('precedence')}"
+        # port_name -> width, for every external `signal` this field
+        # references (we/wel now; swwe/swwel/hwenable/hwmask/next later).
+        # Populated generically so the template can emit one Wire +
+        # top-level Ifc_CSRSignal_* method per port without hardcoding
+        # which property it came from.
+        attr["ext_signals"] = {}
+        self._resolve_we_wel(node, attr, name)
         if attr.get("counter"):
             self._resolve_counter(node, attr, name)
         for prop in UNSUPPORTED_FIELD_PROPS:
