@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 #: Field properties whose value may be an external `signal` reference
 #: that must be exposed as a top-level ConfigCSR input and relayed down
 #: to whichever register(s) contain a consuming field.
-_EXT_SIGNAL_PROPS = ("we", "wel")
+_EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel")
 
 
 class PrintBSVCSR(HierarchyMixin, RDLListener):

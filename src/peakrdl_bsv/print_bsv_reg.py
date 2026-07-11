@@ -6,7 +6,7 @@ from .common import HierarchyMixin, resolve_signal_ref, signal_port_name
 #: Field properties whose value may be an external `signal` reference
 #: that this register-level module needs to relay down to the
 #: consuming field's Ifc_CSRSignal_* module (see print_bsv_signal.py).
-_EXT_SIGNAL_PROPS = ("we", "wel")
+_EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel")
 
 
 class PrintBSVReg(HierarchyMixin, RDLListener):

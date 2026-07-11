@@ -103,8 +103,9 @@ rule r_write;
 	    weren't targeted (wstrb=0 for this field's slice). Guard on a
 	    nonzero wstrb so a zero-strobe write to a sibling field can't
 	    spuriously win this branch and starve a genuine same-cycle hw
-	    write. -#}
-	else if(sw_wdata.wget( ) matches tagged Valid .v &&& (tpl_2(v) != 0)) begin
+	    write. swwe/swwel additionally gate the whole branch on an
+	    external signal. -#}
+	else if(sw_wdata.wget( ) matches tagged Valid .v &&& (tpl_2(v) != 0){%if attr['swwe_port']%} &&& (w_{{attr['swwe_port']}}==1){%elif attr['swwel_port']%} &&& (w_{{attr['swwel_port']}}==0){%endif%}) begin
 		let wdata = tpl_1(v) & tpl_2(v);
 		{#- Software write effect per the SystemRDL onwrite property. -#}
 		{%if attr['woclr']%}

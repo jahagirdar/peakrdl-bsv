@@ -872,7 +872,8 @@ class TestPrecedence:
 
 
 class TestExternalSignalGating:
-    """Tests for we/wel hw write-enable gated by an external `signal`.
+    """Tests for we/wel (hw write-enable) and swwe/swwel (sw write-enable)
+    gated by an external `signal`.
 
     Only a `signal` reference is modeled (a Field/PropertyReference value
     is valid per the SystemRDL spec but doesn't resolve through this
@@ -958,6 +959,38 @@ class TestExternalSignalGating:
         assert _has(
             reg, r"rule rl_relay_ext_\S+;\s*sig_f0\.set_ext_\S+\(w_ext_\S+\);\s*endrule"
         ), "ConfigReg must relay the signal down to the consuming field"
+
+    def test_swwe_gates_sw_write(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("swwe"), tmpdir_str)
+        sig = _r_write_rule(bsv["signal"])
+        assert _has(
+            sig,
+            r"sw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(tpl_2\(v\)\s*!=\s*0\)\s*&&&\s*\(w_ext_\S+==1\)",
+        ), "swwe must gate the sw write branch on the external signal == 1"
+
+    def test_swwel_gates_sw_write_active_low(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("swwel"), tmpdir_str)
+        sig = _r_write_rule(bsv["signal"])
+        assert _has(
+            sig,
+            r"sw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(tpl_2\(v\)\s*!=\s*0\)\s*&&&\s*\(w_ext_\S+==0\)",
+        ), "swwel must gate the sw write branch on the external signal == 0"
+
+    def test_swwe_true_bool_has_no_port_or_gating(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap topmap {
+                reg r1 {
+                    field { sw = rw; hw = rw; swwe = true; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        assert _not_has(
+            bsv["signal"], r"set_ext_"
+        ), "swwe=true must not generate an external signal port"
 
 
 # ===========================================================================

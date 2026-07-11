@@ -17,10 +17,6 @@ UNSUPPORTED_FIELD_PROPS = (
     "sticky",
     "stickybit",
     "intr",
-    # Software write-enable gating: fields are always sw-writable
-    # regardless of these (implemented separately from we/wel below).
-    "swwe",
-    "swwel",
     # Per-bit hw update masking: hw may update every bit of the field.
     "hwenable",
     "hwmask",
@@ -60,17 +56,23 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
                 self.reg_name,
             )
 
-    def _resolve_we_wel(self, node, attr, name):
-        """Resolve we/wel (hw write-enable gating): only a `signal`
-        reference is modeled (see common.resolve_signal_ref -- a Field/
-        PropertyReference value is a valid SystemRDL construct but, like
-        `next`, doesn't resolve through this compiler's namespace lookup
-        in practice). The plain bool form needs no handling: `we=true`/
-        unset is already the generator's default (hw always enabled to
-        write)."""
-        attr["we_port"] = None
-        attr["wel_port"] = None
-        for prop, attr_key in (("we", "we_port"), ("wel", "wel_port")):
+    def _resolve_write_enable_gates(self, node, attr, name):
+        """Resolve we/wel (hw write-enable) and swwe/swwel (sw
+        write-enable) gating: only a `signal` reference is modeled (see
+        common.resolve_signal_ref -- a Field/PropertyReference value is a
+        valid SystemRDL construct but, like `next`, doesn't resolve
+        through this compiler's namespace lookup in practice). The plain
+        bool form needs no handling: `we=true`/`swwe=true`/unset is
+        already the generator's default (always enabled to write)."""
+        prop_to_attr = {
+            "we": "we_port",
+            "wel": "wel_port",
+            "swwe": "swwe_port",
+            "swwel": "swwel_port",
+        }
+        for prop, attr_key in prop_to_attr.items():
+            attr[attr_key] = None
+        for prop, attr_key in prop_to_attr.items():
             value = node.get_property(prop)
             if value is None or isinstance(value, bool):
                 continue
@@ -202,12 +204,12 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
         # in list_properties() like the other properties above.
         attr["precedence"] = f"{node.get_property('precedence')}"
         # port_name -> width, for every external `signal` this field
-        # references (we/wel now; swwe/swwel/hwenable/hwmask/next later).
+        # references (we/wel/swwe/swwel now; hwenable/hwmask/next later).
         # Populated generically so the template can emit one Wire +
         # top-level Ifc_CSRSignal_* method per port without hardcoding
         # which property it came from.
         attr["ext_signals"] = {}
-        self._resolve_we_wel(node, attr, name)
+        self._resolve_write_enable_gates(node, attr, name)
         if attr.get("counter"):
             self._resolve_counter(node, attr, name)
         for prop in UNSUPPORTED_FIELD_PROPS:
