@@ -161,10 +161,13 @@ def test_singlepulse_has_pulse_method(tmp_path):
 
 
 def test_counter_has_incr_decr(tmp_path):
+    # incrwidth/decrwidth explicitly configure both directions; a bare
+    # `counter;` alone is increment-only (see claude1_test.py's
+    # TestCounter for the bare-counter and bidirectional cases).
     out = generate(
         """\
         addrmap top { reg {
-            field {sw=r; hw=r; counter;} count[3:0]=0;
+            field {sw=r; hw=r; counter; incrwidth=4; decrwidth=4;} count[3:0]=0;
         } r1; };""",
         tmp_path,
     )

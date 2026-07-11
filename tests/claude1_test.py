@@ -462,7 +462,11 @@ class TestReductionProperties:
 class TestCounter:
     """Tests for the counter property and related incr/decr methods."""
 
-    def test_counter_generates_incr_decr_methods(self, tmpdir_str):
+    def test_bare_counter_is_increment_only(self, tmpdir_str):
+        # A bare `counter;` field (no incr/decr-specific properties) is
+        # increment-only per the compiler's own is_up_counter/
+        # is_down_counter inference, and incrvalue defaults to a fixed 1,
+        # so incr() is a zero-arg pulse rather than a count argument.
         rdl = textwrap.dedent(
             """\
             addrmap test {
@@ -475,8 +479,35 @@ class TestCounter:
         )
         bsv = _compile_and_export(rdl, tmpdir_str)
         sig = bsv["signal"]
-        assert _has(sig, r"method Action incr\("), "counter must generate incr() method"
-        assert _has(sig, r"method Action decr\("), "counter must generate decr() method"
+        assert _has(
+            sig, r"method Action incr\(\)"
+        ), "bare counter must generate a zero-arg incr() pulse"
+        assert _not_has(
+            sig, r"method Action decr"
+        ), "bare (increment-only) counter must NOT generate decr()"
+
+    def test_bidirectional_counter_with_explicit_widths(self, tmpdir_str):
+        # Setting incrwidth/decrwidth explicitly both configures both
+        # directions and switches each side to the count-argument form
+        # instead of a fixed-amount pulse.
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                reg test_reg {
+                    field { sw = r; hw = r; counter; incrwidth=8; decrwidth=8; } field0[8] = 0;
+                };
+                test_reg reg0 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"method Action incr\(Bit#\(8\) count\)"
+        ), "explicit incrwidth must generate an incr(count) method"
+        assert _has(
+            sig, r"method Action decr\(Bit#\(8\) count\)"
+        ), "explicit decrwidth must generate a decr(count) method"
 
     def test_no_counter_no_incr_decr(self, tmpdir_str):
         rdl = textwrap.dedent(
@@ -499,6 +530,25 @@ class TestCounter:
         ), "Without counter, decr() must NOT be generated"
 
     def test_counter_uses_rwire_for_incr_decr(self, tmpdir_str):
+        # RWires back the count-argument form; a bare counter (fixed
+        # incrvalue, no explicit width) uses a PulseWire instead since
+        # there's no runtime data to carry.
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                reg test_reg {
+                    field { sw = r; hw = r; counter; incrwidth=8; decrwidth=8; } field0[8] = 0;
+                };
+                test_reg reg0 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(sig, r"r_incr"), "explicit incrwidth must declare r_incr RWire"
+        assert _has(sig, r"r_decr"), "explicit decrwidth must declare r_decr RWire"
+
+    def test_bare_counter_uses_pulsewire(self, tmpdir_str):
         rdl = textwrap.dedent(
             """\
             addrmap test {
@@ -511,8 +561,145 @@ class TestCounter:
         )
         bsv = _compile_and_export(rdl, tmpdir_str)
         sig = bsv["signal"]
-        assert _has(sig, r"r_incr"), "counter must declare r_incr RWire"
-        assert _has(sig, r"r_decr"), "counter must declare r_decr RWire"
+        assert _has(
+            sig, r"PulseWire\s+pw_incr"
+        ), "bare (fixed-amount) counter must use a PulseWire, not r_incr"
+        assert _not_has(sig, r"r_incr"), "bare counter must NOT declare r_incr RWire"
+
+
+# ===========================================================================
+#  7b. COUNTER REFINEMENTS  (incrvalue/decrvalue, saturate, threshold,
+#      overflow/underflow)
+# ===========================================================================
+
+
+class TestCounterRefinements:
+    """Tests for counter refinements beyond the bare incr()/decr() pair."""
+
+    def _rdl(self, field_body):
+        return textwrap.dedent(
+            f"""\
+            addrmap test {{
+                reg test_reg {{
+                    field {{ sw = r; hw = r; counter; {field_body} }} field0[8] = 0;
+                }};
+                test_reg reg0 @ 0x0;
+            }};
+        """
+        )
+
+    def test_incrvalue_generates_zero_arg_pulse_with_fixed_amount(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("incrvalue = 5;"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"method Action incr\(\)"
+        ), "fixed incrvalue must generate a zero-arg incr() pulse"
+        assert _has(
+            sig, r"8'd5"
+        ), "the fixed increment amount must appear as a sized literal"
+
+    def test_incrwidth_generates_narrower_count_argument(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("incrwidth = 3;"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"method Action incr\(Bit#\(3\) count\)"
+        ), "incrwidth must narrow the incr() count argument"
+
+    def test_incrsaturate_clamps_instead_of_wrapping(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("incrsaturate;"), tmpdir_str)
+        rule = self._r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"TAdd#\(8,1\)"
+        ), "incrsaturate must use a widened intermediate to detect the clamp"
+        assert _has(
+            rule, r"8'd255"
+        ), "bool incrsaturate must clamp at the field's max value (255)"
+
+    def test_incrsaturate_with_explicit_ceiling(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("incrsaturate = 100;"), tmpdir_str)
+        rule = self._r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"8'd100"
+        ), "int incrsaturate must clamp at the given ceiling, not the field max"
+
+    def test_overflow_generates_pulse_output(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("overflow;"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"method Bool overflow\(\)"
+        ), "overflow must generate an output pulse method"
+        rule = self._r_write_rule(sig)
+        assert _has(
+            rule, r"pw_overflow\.send\(\)"
+        ), "overflow must fire pw_overflow when the increment wraps"
+
+    def test_incrthreshold_generates_level_output(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("incrthreshold = 200;"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"method Bool incrthreshold\(\)"
+        ), "incrthreshold must generate an output method"
+        assert _has(
+            sig, r"r\s*>=\s*8'd200"
+        ), "incrthreshold must compare the stored value against the given level"
+
+    def test_decrvalue_generates_zero_arg_pulse_with_fixed_amount(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("decrvalue = 2;"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"method Action decr\(\)"
+        ), "fixed decrvalue must generate a zero-arg decr() pulse"
+        assert _not_has(
+            sig, r"method Action incr"
+        ), "decrvalue alone must make the counter decrement-only"
+
+    def test_decrsaturate_clamps_instead_of_wrapping(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("decrsaturate = 10;"), tmpdir_str)
+        rule = self._r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"TAdd#\(8,1\)"
+        ), "decrsaturate must use a widened intermediate to detect the clamp"
+        assert _has(rule, r"8'd10"), "decrsaturate must clamp at the given floor"
+
+    def test_underflow_generates_pulse_output(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("underflow;"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"method Bool underflow\(\)"
+        ), "underflow must generate an output pulse method"
+        rule = self._r_write_rule(sig)
+        assert _has(
+            rule, r"pw_underflow\.send\(\)"
+        ), "underflow must fire pw_underflow when the decrement would go negative"
+
+    def test_dynamic_incrvalue_reference_warns(self, tmpdir_str, caplog):
+        # incrvalue may reference an external signal/field per the spec;
+        # that dynamic form isn't modeled, so it must warn (not silently
+        # produce a fixed-amount pulse using some arbitrary default).
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal { } bump;
+                reg test_reg {
+                    field { sw = r; hw = r; counter; incrvalue = bump; } field0[8] = 0;
+                };
+                test_reg reg0 @ 0x0;
+            };
+        """
+        )
+        with caplog.at_level(logging.WARNING):
+            bsv = _compile_and_export(rdl, tmpdir_str)
+        assert any(
+            "incrvalue" in rec.message for rec in caplog.records
+        ), "a dynamic incrvalue reference must warn that it isn't supported"
+        # Falls back to a plain count-argument incr(), not a bogus pulse.
+        assert _has(bsv["signal"], r"method Action incr\(Bit#\(8\) count\)")
+
+    @staticmethod
+    def _r_write_rule(sig):
+        m = re.search(r"rule r_write;.*?endrule", sig, re.S)
+        assert m, "r_write rule must be present"
+        return m.group(0)
 
 
 # ===========================================================================
@@ -1051,8 +1238,8 @@ class TestIntegration:
             """\
             addrmap test {
                 reg perf_cnt {
-                    field { sw = r; hw = r; counter; } hits[16] = 0;
-                    field { sw = r; hw = r; counter; } misses[16] = 0;
+                    field { sw = r; hw = r; counter; incrwidth=16; decrwidth=16; } hits[16] = 0;
+                    field { sw = r; hw = r; counter; incrwidth=16; decrwidth=16; } misses[16] = 0;
                 };
                 perf_cnt pc @ 0x0;
             };

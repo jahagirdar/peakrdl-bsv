@@ -26,8 +26,15 @@ interface HW_{{attr['reg_name']}}_{{attr['signal_name']}};
 	{%if attr['hwclr']%} method Action hwclr();{%endif%}
 {%if attr['hw_writable']%} method Action _write(Bit#({{node.width}}) data); {%endif%}
 {%if attr['hw_readable']%} method Bit#({{node.width}}) _read; {%endif%}
-{%if attr['counter']%}method Action incr(Bit#({{node.width}}) count);{%endif%}
-{%if attr['counter']%}method Action decr(Bit#({{node.width}}) count);{%endif%}
+{%if attr['counter_up']%}
+{%if attr['incr_is_pulse']%}method Action incr();{%else%}method Action incr(Bit#({{attr['incr_width']}}) count);{%endif%}
+{%if attr['has_overflow']%} method Bool overflow();{%endif%}
+{%if attr['incr_threshold'] is not none%} method Bool incrthreshold();{%endif%}
+{%endif%}
+{%if attr['counter_down']%}
+{%if attr['decr_is_pulse']%}method Action decr();{%else%}method Action decr(Bit#({{attr['decr_width']}}) count);{%endif%}
+{%if attr['has_underflow']%} method Bool underflow();{%endif%}
+{%endif%}
 	method Action clear();
 endinterface
 
@@ -54,8 +61,26 @@ PulseWire pw_swacc <-mkPulseWire();
 PulseWire pw_swmod <-mkPulseWire();
 RWire#(Tuple2#(Bit#({{node.width}}),Bit#({{node.width}})))sw_wdata <-mkRWire();
 RWire#(Bit#({{node.width}}))hw_wdata <-mkRWire();
-RWire#(Bit#({{node.width}}))r_incr <-mkRWire();
-RWire#(Bit#({{node.width}}))r_decr <-mkRWire();
+{%if attr['counter_up']%}
+{%if attr['incr_is_pulse']%}
+PulseWire pw_incr <-mkPulseWire();
+{%else%}
+RWire#(Bit#({{attr['incr_width']}}))r_incr <-mkRWire();
+{%endif%}
+{%if attr['has_overflow']%}
+PulseWire pw_overflow <-mkPulseWire();
+{%endif%}
+{%endif%}
+{%if attr['counter_down']%}
+{%if attr['decr_is_pulse']%}
+PulseWire pw_decr <-mkPulseWire();
+{%else%}
+RWire#(Bit#({{attr['decr_width']}}))r_decr <-mkRWire();
+{%endif%}
+{%if attr['has_underflow']%}
+PulseWire pw_underflow <-mkPulseWire();
+{%endif%}
+{%endif%}
 
 rule r_write;
 	let rr = r;
@@ -104,8 +129,42 @@ rule r_write;
 	{{ sw_write_block }}
 	{{ hw_write_block }}
 	{%endif%}
-	else if(r_incr.wget( ) matches tagged Valid .v)   rr = r + v;
-	else if(r_decr.wget( ) matches tagged Valid .v)   rr = r - v;
+	{%if attr['counter_up']%}
+	else if({%if attr['incr_is_pulse']%}pw_incr{%else%}r_incr.wget( ) matches tagged Valid .v{%endif%}) begin
+		{%if attr['incr_is_pulse']%}
+		let amt = {{node.width}}'d{{attr['incr_const']}};
+		{%else%}
+		let amt = zeroExtend(v);
+		{%endif%}
+		{%if attr['incr_needs_wide']%}
+		Bit#(TAdd#({{node.width}},1)) wideSum = zeroExtend(r) + zeroExtend(amt);
+		rr = (wideSum > zeroExtend({{node.width}}'d{{attr['incr_sat_max']}})) ? {{node.width}}'d{{attr['incr_sat_max']}} : truncate(wideSum);
+		{%else%}
+		{%if attr['has_overflow']%}
+		if (amt > ~r) pw_overflow.send();
+		{%endif%}
+		rr = r + amt;
+		{%endif%}
+	end
+	{%endif%}
+	{%if attr['counter_down']%}
+	else if({%if attr['decr_is_pulse']%}pw_decr{%else%}r_decr.wget( ) matches tagged Valid .v{%endif%}) begin
+		{%if attr['decr_is_pulse']%}
+		let amt = {{node.width}}'d{{attr['decr_const']}};
+		{%else%}
+		let amt = zeroExtend(v);
+		{%endif%}
+		{%if attr['decr_needs_wide']%}
+		Bit#(TAdd#({{node.width}},1)) floorPlusAmt = zeroExtend(amt) + zeroExtend({{node.width}}'d{{attr['decr_sat_min']}});
+		rr = (floorPlusAmt > zeroExtend(r)) ? {{node.width}}'d{{attr['decr_sat_min']}} : (r - amt);
+		{%else%}
+		{%if attr['has_underflow']%}
+		if (amt > r) pw_underflow.send();
+		{%endif%}
+		rr = r - amt;
+		{%endif%}
+	end
+	{%endif%}
 	r<=rr;
 endrule
 interface HW_{{attr['reg_name']}}_{{attr['signal_name']}} hw;
@@ -162,13 +221,42 @@ method Bit#({{node.width}}) _read;
 	return r;
 endmethod
 {%endif%}
-{%if attr['counter']%}
-method Action incr(Bit#({{node.width}}) count);
+{%if attr['counter_up']%}
+{%if attr['incr_is_pulse']%}
+method Action incr();
+		pw_incr.send();
+endmethod
+{%else%}
+method Action incr(Bit#({{attr['incr_width']}}) count);
 		r_incr.wset(count);
 endmethod
-method Action decr(Bit#({{node.width}}) count);
+{%endif%}
+{%if attr['has_overflow']%}
+method Bool overflow();
+	return pw_overflow;
+endmethod
+{%endif%}
+{%if attr['incr_threshold'] is not none%}
+method Bool incrthreshold();
+	return r >= {{node.width}}'d{{attr['incr_threshold']}};
+endmethod
+{%endif%}
+{%endif%}
+{%if attr['counter_down']%}
+{%if attr['decr_is_pulse']%}
+method Action decr();
+		pw_decr.send();
+endmethod
+{%else%}
+method Action decr(Bit#({{attr['decr_width']}}) count);
 		r_decr.wset(count);
 endmethod
+{%endif%}
+{%if attr['has_underflow']%}
+method Bool underflow();
+	return pw_underflow;
+endmethod
+{%endif%}
 {%endif%}
 endinterface
 interface SW_{{attr['reg_name']}}_{{attr['signal_name']}} bus;

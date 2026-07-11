@@ -325,12 +325,18 @@ def test_hw_clear_beats_set_beats_sw_write(tmp_path):
 
 
 def test_counter_incr_decr(tmp_path):
-    out = gen_field("field {sw=r; hw=r; counter;} f[7:0]=0;", tmp_path)
+    # incrwidth/decrwidth explicitly configure both directions in the
+    # count-argument form; a bare `counter;` alone is increment-only with
+    # a fixed-amount pulse (see test_bare_counter_is_increment_only in
+    # claude1_test.py).
+    out = gen_field(
+        "field {sw=r; hw=r; counter; incrwidth=8; decrwidth=8;} f[7:0]=0;", tmp_path
+    )
     sig = out["signal"]
     assert "method Action incr" in sig
     assert "method Action decr" in sig
-    assert re.search(r"rr = r \+ v;", rule_body(sig))
-    assert re.search(r"rr = r - v;", rule_body(sig))
+    assert re.search(r"rr = r \+ amt;", rule_body(sig))
+    assert re.search(r"rr = r - amt;", rule_body(sig))
 
 
 def test_reductions(tmp_path):
