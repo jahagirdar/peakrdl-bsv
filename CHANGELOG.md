@@ -18,8 +18,18 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 ### Added
 - Write side effects for all SystemRDL `onwrite` policies: `wclr`, `wset`, `wot`, `wzc`, `wzs` (in addition to `woclr`/`woset`).
 - `hwset`/`hwclr` hardware interface methods.
-- Explicit generation-time warnings for unsupported properties (`ruser`, `wuser`, `sticky`, `stickybit`, `intr`, write-once `sw=w1`/`rw1`, external registers, memories) instead of silently wrong RTL.
+- Explicit generation-time warnings for unsupported properties (`ruser`, `wuser`, write-once `sw=w1`/`rw1`, external registers, memories) instead of silently wrong RTL.
 - Per-feature test suite covering the SystemRDL feature matrix; every feature's output is additionally elaborated with bsc when available.
+- The register-level `value()` aggregation now reads every field's real stored value via a new unconditional `currentValue()` accessor, instead of hardcoding a literal 0 for `hw=w` fields (e.g. `INTERRUPT`, `STS` registers) that only exposed a `hw` read path when `hw=r`.
+- `precedence`: the `r_write` update rule now orders the hw-write vs sw-write branches according to `precedence=` (default `sw`, matching the spec), instead of always giving software fixed priority. Also fixes a related latent bug the branch-ordering exposed: a zero-strobe write to a sibling field in the same register could previously starve a genuine same-cycle hw write, regardless of precedence.
+- Counter refinements: `incr()`/`decr()` are now generated per the compiler's own `is_up_counter`/`is_down_counter` direction inference (a bare `counter;` is increment-only with a fixed-amount zero-arg pulse, not an unconditional `incr()`+`decr()` pair with an arbitrary count argument). `incrvalue`/`decrvalue` (fixed-amount pulse) and `incrwidth`/`decrwidth` (explicit count argument) are now distinguished; `incrsaturate`/`decrsaturate`/`saturate` clamp at a configurable ceiling/floor instead of wrapping; `incrthreshold`/`threshold` add a level-output method; `overflow`/`underflow` add pulse-output methods.
+- `we`/`wel` (hw write-enable), `swwe`/`swwel` (sw write-enable), `hwenable`/`hwmask` (per-bit hw update masking), and `next` (the field's flip-flop D-input) are now modeled when given as a `signal` reference (the only form that resolves through this compiler's namespace lookup for these dynamic properties) via a new 3-level Wire/Action-method relay mechanism threading the signal from the top `ConfigCSR` module down through `ConfigReg` to the field's own `CSRSignal` module.
+- `resetsignal` now builds a genuine independent async Reset domain (`mkReset`/`assertReset`), plumbed as a Bool module constructor argument (a different mechanism from the Wire-based properties above, since building a real `Reset` needs a live value at module-elaboration time).
+- `sticky`/`stickybit`: a hw write to a `stickybit` field now ORs into the current value instead of overwriting it (a bit, once set, can't be hw-cleared); `sticky` freezes the whole field once nonzero until cleared by something else (sw, `woclr`/`rclr`/`hwclr`, `clear()`).
+- `intr`: registers with one or more `intr` fields now get a register-level `interrupt()` method OR-reducing every intr field's current value, qualified by `enable`/`mask` (as a `signal` reference) if set; `haltenable`/`haltmask` build a completely separate `halt()` method the same way.
+
+### Removed
+- `sticky`, `stickybit`, and `intr` from the unsupported-property warning list, now that they're implemented (see Added). `ruser`/`wuser` remain unsupported: they only have meaning for external registers (no internal storage, transactions forwarded to an external bus interface with sideband signals), an architecture this generator doesn't implement at all.
 
 ## [0.0.5] - 2026-02-26
 ### Fixed
