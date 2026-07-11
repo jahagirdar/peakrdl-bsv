@@ -11,7 +11,45 @@ logger = logging.getLogger(__name__)
 
 #: Field properties the generated BSV does not model; flagged at generation
 #: time so the user is not silently handed wrong RTL.
-UNSUPPORTED_FIELD_PROPS = ("ruser", "wuser", "sticky", "stickybit", "intr")
+UNSUPPORTED_FIELD_PROPS = (
+    "ruser",
+    "wuser",
+    "sticky",
+    "stickybit",
+    "intr",
+    # Software/hardware write-enable gating: fields are always writable by
+    # their respective side regardless of these.
+    "swwe",
+    "swwel",
+    "we",
+    "wel",
+    # Per-bit hw update masking: hw may update every bit of the field.
+    "hwenable",
+    "hwmask",
+    # hw-vs-sw contention order: the generated r_write rule always applies
+    # a fixed priority (clear > set > sw write > hw write > incr > decr)
+    # regardless of what precedence= specifies.
+    "precedence",
+    # Combinational next-value expression: not wired into the generated
+    # storage rule.
+    "next",
+    # Field always resets from the module's single global reset signal.
+    "resetsignal",
+    # Counter refinements beyond the bare counter flag: incr/decr are
+    # generated as unconditional +count/-count with no saturation,
+    # rollover, or threshold/overflow/underflow signal.
+    "incrvalue",
+    "decrvalue",
+    "incrwidth",
+    "decrwidth",
+    "incrsaturate",
+    "decrsaturate",
+    "saturate",
+    "incrthreshold",
+    "threshold",
+    "overflow",
+    "underflow",
+)
 
 
 # Define a listener that will print out the register model hierarchy
@@ -65,7 +103,10 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
         if "hw" in attr:
             attr["hw"] = f"{attr['hw']}"
         for prop in UNSUPPORTED_FIELD_PROPS:
-            if attr.get(prop):
+            # Membership, not truthiness: several of these (incrvalue,
+            # decrwidth, threshold, ...) are integer-valued and a
+            # legitimately-assigned 0 must still warn.
+            if prop in attr:
                 logger.warning(
                     "%s.%s: property '%s' is not supported by the BSV "
                     "generator; the generated code ignores it.",
