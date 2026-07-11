@@ -4,14 +4,19 @@ import math
 
 from systemrdl import RDLListener
 
-from .common import HierarchyMixin, resolve_signal_ref, signal_port_name
+from .common import (
+    HierarchyMixin,
+    reset_signal_port_name,
+    resolve_signal_ref,
+    signal_port_name,
+)
 
 logger = logging.getLogger(__name__)
 
 #: Field properties whose value may be an external `signal` reference
 #: that must be exposed as a top-level ConfigCSR input and relayed down
 #: to whichever register(s) contain a consuming field.
-_EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel")
+_EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel", "hwenable", "hwmask", "next")
 
 
 class PrintBSVCSR(HierarchyMixin, RDLListener):
@@ -53,6 +58,14 @@ class PrintBSVCSR(HierarchyMixin, RDLListener):
             # to it (deduped per register; the register's own module
             # fans a port out to every consuming field internally).
             self.reg_ports = {}
+            # port_name -> True, deduped across the whole addrmap:
+            # resetsignal ports (constructor-argument plumbing, see
+            # print_bsv_signal.py._resolve_resetsignal -- this is the
+            # genuine top-level board boundary for them).
+            self.csr_reset_signals = {}
+            # reg_name -> ordered, deduped list of resetsignal port
+            # names that register's own module signature needs.
+            self.reg_reset_ports = {}
         self._enter_scope(node)
 
     def enter_Mem(self, node):
@@ -81,10 +94,13 @@ class PrintBSVCSR(HierarchyMixin, RDLListener):
         self.interface += (
             f"interface ConfigReg_HW_{self.reg_name} {self.reg_name.lower()};\n"
         )
-        self.instance += f"ConfigReg_{self.reg_name} reg_{self.reg_name} <- mkConfigReg_{self.reg_name}();\n"
         self.method += f"interface ConfigReg_HW_{self.reg_name} {self.reg_name.lower()} = reg_{self.reg_name}.hw;\n"
         self.write_method += f"if(address== address_{self.reg_name})reg_{self.reg_name}.bus.write(data,wstrb_expanded);\n"
         self.read_method += f"if(address== address_{self.reg_name})rv<-reg_{self.reg_name}.bus.read();\n"
+        # The register's own instantiation line (self.instance) is built
+        # in exit_Reg, not here: it needs to know every field's
+        # resetsignal constructor arguments, which aren't known until
+        # this register's fields have all been visited.
 
     def enter_Field(self, node):
         """Field Handler: catalog external `signal` references so this
@@ -97,6 +113,29 @@ class PrintBSVCSR(HierarchyMixin, RDLListener):
             port = signal_port_name(sig)
             self.csr_ext_signals[port] = sig.width
             self.reg_ports.setdefault(self.reg_name, set()).add(port)
+        reset_sig = resolve_signal_ref(node, "resetsignal")
+        if reset_sig is not None:
+            reset_port = reset_signal_port_name(reset_sig)
+            self.csr_reset_signals[reset_port] = True
+            ports = self.reg_reset_ports.setdefault(self.reg_name, [])
+            if reset_port not in ports:
+                ports.append(reset_port)
+
+    def exit_Reg(self, node):
+        """Now that every field in this register has been visited (and
+        thus every resetsignal constructor argument it needs is known),
+        build the register's own instantiation line: reg_X's Bool
+        resetsignal args are supplied straight from this CSR module's
+        own Wires -- a plain pass-through, no relay rule needed, since
+        referencing a Wire's value directly at instantiation is already
+        continuous."""
+        reset_args = ", ".join(
+            f"w_rst_{port}" for port in self.reg_reset_ports.get(self.reg_name, [])
+        )
+        self.instance += (
+            f"ConfigReg_{self.reg_name} reg_{self.reg_name} <- "
+            f"mkConfigReg_{self.reg_name}({reset_args});\n"
+        )
 
     def exit_Addrmap(self, node):
         """Write code for addressmap."""
@@ -132,6 +171,23 @@ class PrintBSVCSR(HierarchyMixin, RDLListener):
             for reg_name, ports in self.reg_ports.items()
             for port in ports
         )
+        # resetsignal: the genuine top-level board boundary for these --
+        # an Action method + backing Wire per unique port, same as the
+        # ext_signal_* triple above, but *no* relay rule: each register
+        # that needs one gets the Wire's value passed straight through
+        # as a constructor argument (built in exit_Reg), since that's
+        # already a continuous connection.
+        reset_signal_iface = "\n".join(
+            f"method Action set_rst_{port}(Bool v);" for port in self.csr_reset_signals
+        )
+        reset_signal_wires = "\n".join(
+            f"Wire#(Bool) w_rst_{port} <-mkDWire(False);"
+            for port in self.csr_reset_signals
+        )
+        reset_signal_impls = "\n".join(
+            f"method Action set_rst_{port}(Bool v);\n    w_rst_{port} <= v;\nendmethod"
+            for port in self.csr_reset_signals
+        )
         print(
             f"""
 interface ConfigCSR_{self.addrmap_name};
@@ -139,13 +195,15 @@ interface ConfigCSR_{self.addrmap_name};
     method Action write(Bit#({self.addr_width}) address, Bit#({self.data_width}) data, Bit#({self.data_width//8}) wstrb);
     method ActionValue#(Bit#({self.data_width})) read(Bit#({self.addr_width}) address);
     {ext_signal_iface}
+    {reset_signal_iface}
 endinterface
 {self.address_alias}
 
 (*synthesize*)
 module mkConfigCSR_{self.addrmap_name}(ConfigCSR_{self.addrmap_name});
-    {self.instance}
     {ext_signal_wires}
+    {reset_signal_wires}
+    {self.instance}
     {ext_signal_relays}
     {self.method}
     method Action write(Bit#({self.addr_width}) address,Bit#({self.data_width}) data,Bit#({self.data_width//8}) wstrb);
@@ -161,6 +219,7 @@ module mkConfigCSR_{self.addrmap_name}(ConfigCSR_{self.addrmap_name});
     return rv;
     endmethod
     {ext_signal_impls}
+    {reset_signal_impls}
 endmodule
                   """,
             file=self.file,

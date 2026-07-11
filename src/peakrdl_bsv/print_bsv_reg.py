@@ -1,12 +1,17 @@
 """Write Bluespec Register file."""
 from systemrdl import RDLListener
 
-from .common import HierarchyMixin, resolve_signal_ref, signal_port_name
+from .common import (
+    HierarchyMixin,
+    reset_signal_port_name,
+    resolve_signal_ref,
+    signal_port_name,
+)
 
 #: Field properties whose value may be an external `signal` reference
 #: that this register-level module needs to relay down to the
 #: consuming field's Ifc_CSRSignal_* module (see print_bsv_signal.py).
-_EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel")
+_EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel", "hwenable", "hwmask", "next")
 
 
 class PrintBSVReg(HierarchyMixin, RDLListener):
@@ -46,6 +51,11 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
         self.reg_ext_signals = {}
         # (field_signal_name, port_name) pairs needing a relay rule.
         self.ext_signal_consumers = []
+        # Ordered, deduped list of resetsignal port names this register's
+        # own module signature needs (constructor-argument plumbing --
+        # see print_bsv_signal.py._resolve_resetsignal for why this can't
+        # reuse the Action-method ext_signals mechanism above).
+        self.reg_reset_ports = []
 
     def enter_Field(self, node):
         """Field Handler."""
@@ -56,7 +66,14 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
         self.interface += (
             f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name};\n"
         )
-        self.instance += f"Ifc_CSRSignal_{self.reg_name}_{self.signal_name} sig_{self.signal_name} <- mkCSRSignal_{self.reg_name}_{self.signal_name}({reset});\n"
+        reset_sig = resolve_signal_ref(node, "resetsignal")
+        ctor_args = f"{reset}"
+        if reset_sig is not None:
+            reset_port = reset_signal_port_name(reset_sig)
+            if reset_port not in self.reg_reset_ports:
+                self.reg_reset_ports.append(reset_port)
+            ctor_args += f", rst_{reset_port}"
+        self.instance += f"Ifc_CSRSignal_{self.reg_name}_{self.signal_name} sig_{self.signal_name} <- mkCSRSignal_{self.reg_name}_{self.signal_name}({ctor_args});\n"
         self.method += f"interface HW_{self.reg_name}_{self.signal_name} s{self.signal_name} = sig_{self.signal_name}.hw;\n"
         if node.is_sw_writable:
             self.write_method += f"sig_{self.signal_name}.bus.write(data[{node.high}:{node.low}],wstrb[{node.high}:{node.low}]);\n"
@@ -115,6 +132,15 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
             f"rule rl_relay_{port}_{field};\n    sig_{field}.set_{port}(w_{port});\nendrule"
             for field, port in self.ext_signal_consumers
         )
+        # resetsignal: a plain pass-through constructor argument (not a
+        # Wire/method/relay-rule triple like the ext_signals above --
+        # see print_bsv_signal.py._resolve_resetsignal), since it just
+        # needs to reach the consuming field's own mkCSRSignal_* call
+        # unchanged.
+        reset_ctor_params = ", ".join(
+            f"Bool rst_{port}" for port in self.reg_reset_ports
+        )
+        module_params = f"#({reset_ctor_params})" if reset_ctor_params else ""
         print(
             f"""
 interface ConfigReg_HW_{self.reg_name};
@@ -133,7 +159,7 @@ interface ConfigReg_HW_{self.reg_name} hw;
 interface ConfigReg_Bus_{self.reg_name} bus;
     {ext_signal_iface}
 endinterface
-module mkConfigReg_{self.reg_name}(ConfigReg_{self.reg_name});
+module mkConfigReg_{self.reg_name}{module_params}(ConfigReg_{self.reg_name});
     {self.instance}
     {ext_signal_wires}
     {ext_signal_relays}

@@ -59,9 +59,24 @@ endinterface
 
 
 
-module mkCSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}}#(Integer resetValue)(Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}});
+module mkCSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}}#(Integer resetValue{%if attr['resetsignal_port']%}, Bool rst_{{attr['resetsignal_port']}}{%endif%})(Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}});
 
+	{%if attr['resetsignal_port']%}
+	{#- resetsignal (SystemRDL 9.5): the field resets from this signal
+	    instead of the module's ambient reset. mkReset/assertReset builds
+	    a genuine independent async Reset domain, driven from a rule
+	    guarded by the live constructor-argument value (a plain Bool,
+	    not an Action-pushed Wire like we/wel/etc -- see
+	    common.reset_signal_port_name for why). -#}
+	Clock clk_rstsig <- exposeCurrentClock;
+	MakeResetIfc mr_rstsig <- mkReset(1, False, clk_rstsig);
+	rule rl_assert_resetsignal ({%if attr['resetsignal_active_low']%}!rst_{{attr['resetsignal_port']}}{%else%}rst_{{attr['resetsignal_port']}}{%endif%});
+		mr_rstsig.assertReset;
+	endrule
+	Reg#(Bit#({{node.width}})) r<-mkRegA(fromInteger(resetValue), reset_by mr_rstsig.new_rst);
+	{%else%}
 	Reg#(Bit#({{node.width}})) r<-mkRegA(fromInteger(resetValue));
+	{%endif%}
 PulseWire pw_set <-mkPulseWire();
 PulseWire pw_clear <-mkPulseWire();
 PulseWire pw_swacc <-mkPulseWire();
@@ -95,6 +110,15 @@ PulseWire pw_underflow <-mkPulseWire();
 rule r_write;
 	let rr = r;
 	{%if attr['singlepulse']%} rr = 0;{%endif%}
+	{#- next (SystemRDL 9.5) is the field's flip-flop D-input: when
+	    modeled (a same-cycle-driven external signal, see
+	    print_bsv_signal.py._resolve_masking_and_next), it unconditionally
+	    supersedes every other update source below -- clear/set/sw/hw
+	    writes don't actually reach the D-input once next= is wired in
+	    real hardware. -#}
+	{%if attr['next_port']%}
+	rr = w_{{attr['next_port']}};
+	{%else%}
 	if(pw_clear) rr =0;
 	else if(pw_set) rr = ~0;
 	{%- set sw_write_block %}
@@ -130,8 +154,10 @@ rule r_write;
 	{%- set hw_write_block %}
 	{#- we/wel gate whether a genuine hw _write() call actually reaches
 	    the storage this cycle; unset/bool true is today's unconditional
-	    default. -#}
-	else if(hw_wdata.wget( ) matches tagged Valid .v{%if attr['we_port']%} &&& (w_{{attr['we_port']}}==1){%elif attr['wel_port']%} &&& (w_{{attr['wel_port']}}==0){%endif%}) rr = v;
+	    default. hwenable/hwmask (mutually exclusive per the compiler)
+	    additionally merge only the enabled/unmasked bits of the write
+	    with the field's current value, instead of overwriting it whole. -#}
+	else if(hw_wdata.wget( ) matches tagged Valid .v{%if attr['we_port']%} &&& (w_{{attr['we_port']}}==1){%elif attr['wel_port']%} &&& (w_{{attr['wel_port']}}==0){%endif%}) rr = {%if attr['hwenable_port']%}(v & w_{{attr['hwenable_port']}}) | (r & ~w_{{attr['hwenable_port']}}){%elif attr['hwmask_port']%}(v & ~w_{{attr['hwmask_port']}}) | (r & w_{{attr['hwmask_port']}}){%else%}v{%endif%};
 	{%- endset %}
 	{#- SystemRDL precedence property (default sw): decides which of a
 	    simultaneous hw write and sw write wins by checking that side's
@@ -178,6 +204,7 @@ rule r_write;
 		rr = r - amt;
 		{%endif%}
 	end
+	{%endif%}
 	{%endif%}
 	r<=rr;
 endrule
@@ -316,8 +343,8 @@ endmethod
 endmodule
 {%if gentest%}
 (*synthesize*)
-module testcsrreg_{{attr['reg_name']}}_{{attr['signal_name']}}(Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}});
-Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}} ipaddress_r<-mkCSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}}('h0);
+module testcsrreg_{{attr['reg_name']}}_{{attr['signal_name']}}{%if attr['resetsignal_port']%}#(Bool rst_{{attr['resetsignal_port']}}){%endif%}(Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}});
+Ifc_CSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}} ipaddress_r<-mkCSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}}('h0{%if attr['resetsignal_port']%}, rst_{{attr['resetsignal_port']}}{%endif%});
 return ipaddress_r;
 endmodule
 {%endif%}

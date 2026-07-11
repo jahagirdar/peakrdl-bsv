@@ -994,6 +994,139 @@ class TestExternalSignalGating:
 
 
 # ===========================================================================
+#  9c. HWENABLE/HWMASK/NEXT  (full-width external signals)
+# ===========================================================================
+
+
+class TestHwEnableMaskNext:
+    """Tests for hwenable/hwmask (per-bit hw update masking) and next (the
+    field's flip-flop D-input), all modeled as a full-width `signal`
+    reference -- the same signal-only limitation as we/wel/swwe/swwel."""
+
+    def _rdl(self, prop, hw="rw"):
+        return textwrap.dedent(
+            f"""\
+            addrmap topmap {{
+                signal {{}} gate_sig[8];
+                reg r1 {{
+                    field {{ sw = rw; hw = {hw}; {prop} = gate_sig; }} f0[8] = 0;
+                }};
+                r1 reg1 @ 0x0;
+            }};
+        """
+        )
+
+    def test_hwenable_merges_enabled_bits(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("hwenable"), tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule,
+            r"rr\s*=\s*\(v\s*&\s*w_ext_\S+\)\s*\|\s*\(r\s*&\s*~w_ext_\S+\)",
+        ), "hwenable must merge enabled bits of v with the unenabled bits of r"
+
+    def test_hwmask_merges_unmasked_bits(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("hwmask"), tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule,
+            r"rr\s*=\s*\(v\s*&\s*~w_ext_\S+\)\s*\|\s*\(r\s*&\s*w_ext_\S+\)",
+        ), "hwmask must merge unmasked bits of v with the masked bits of r"
+
+    def test_next_overrides_everything_unconditionally(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("next", hw="rw"), tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"rr\s*=\s*w_ext_\S+;"
+        ), "next must unconditionally set rr from the external signal"
+        assert _not_has(
+            rule, r"pw_clear"
+        ), "next must skip the clear/set/sw/hw/counter chain entirely"
+
+    def test_next_requires_hw_writable(self, tmpdir_str):
+        # SystemRDL requires next's field to be hw-writable; hw=r should
+        # be rejected by the compiler itself before generation even runs.
+        from systemrdl.messages import RDLCompileError
+
+        rdl = self._rdl("next", hw="r")
+        with pytest.raises(RDLCompileError):
+            _compile_and_export(rdl, tmpdir_str)
+
+
+# ===========================================================================
+#  9d. RESETSIGNAL  (true async reset domain)
+# ===========================================================================
+
+
+class TestResetSignal:
+    """Tests for resetsignal: a genuine independent async Reset domain
+    (mkReset/assertReset), built from a module *constructor argument*
+    rather than the Action-method ext_signals mechanism (see
+    common.reset_signal_port_name)."""
+
+    def _rdl(self, polarity="activehigh"):
+        return textwrap.dedent(
+            f"""\
+            addrmap topmap {{
+                signal {{ {polarity}; }} rst_sig;
+                reg r1 {{
+                    field {{ sw = rw; hw = r; resetsignal = rst_sig; }} f0[8] = 0;
+                }};
+                r1 reg1 @ 0x0;
+            }};
+        """
+        )
+
+    def test_active_high_asserts_on_signal_high(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("activehigh"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"MakeResetIfc mr_rstsig <- mkReset\(1, False, clk_rstsig\)"
+        ), "resetsignal must build an independent async Reset domain"
+        assert _has(
+            sig, r"rule rl_assert_resetsignal \(rst_rstsig_\S+\)"
+        ), "active-high resetsignal must assert when the signal is 1"
+        assert _has(
+            sig, r"reset_by mr_rstsig\.new_rst"
+        ), "the field's Reg must use the resetsignal-derived Reset"
+
+    def test_active_low_inverts_assert_condition(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("activelow"), tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig, r"rule rl_assert_resetsignal \(!rst_rstsig_\S+\)"
+        ), "active-low resetsignal must assert when the signal is 0"
+
+    def test_module_signature_takes_bool_ctor_arg(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl(), tmpdir_str)
+        assert _has(
+            bsv["signal"],
+            r"module mkCSRSignal_\S+#\(Integer resetValue, Bool rst_rstsig_\S+\)",
+        ), "resetsignal must be a Bool constructor argument, not an Action method"
+
+    def test_reg_module_takes_and_forwards_bool_arg(self, tmpdir_str):
+        # Modules are named after the register INSTANCE (reg1), not its
+        # type (r1) -- see TestRegisterStructure et al.
+        bsv = _compile_and_export(self._rdl(), tmpdir_str)
+        reg = bsv["reg"]
+        assert _has(
+            reg, r"module mkConfigReg_reg1#\(Bool rst_rstsig_\S+\)\(ConfigReg_reg1\)"
+        ), "ConfigReg must take the resetsignal as its own Bool ctor arg"
+        assert _has(
+            reg, r"mkCSRSignal_reg1_f0\(0, rst_rstsig_\S+\)"
+        ), "ConfigReg must forward the Bool arg straight to the field"
+
+    def test_csr_exposes_top_level_set_method(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl(), tmpdir_str)
+        csr = bsv["csr"]
+        assert _has(
+            csr, r"method Action set_rst_rstsig_\S+\(Bool v\)"
+        ), "ConfigCSR must expose a top-level Action method for the reset signal"
+        assert _has(
+            csr, r"mkConfigReg_reg1\(w_rst_rstsig_\S+\)"
+        ), "ConfigCSR must pass its own Wire straight through to ConfigReg"
+
+
+# ===========================================================================
 # 10. REGISTER-LEVEL STRUCTURE
 # ===========================================================================
 

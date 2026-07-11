@@ -37,6 +37,20 @@ def signal_port_name(signal_node):
     return "ext_" + _NON_IDENT_RE.sub("_", signal_node.get_path())
 
 
+def reset_signal_port_name(signal_node):
+    """Stable, BSV-legal port name for a `resetsignal` reference.
+
+    Distinct prefix from signal_port_name(): resetsignal is plumbed as a
+    plain Bool module *constructor argument* (needed to build a genuine
+    async Reset at module-elaboration time via mkReset/assertReset), not
+    an Action-method-pushed Bit#(w) Wire like we/wel/swwe/swwel/
+    hwenable/hwmask -- if the same signal instance were ever used for
+    both, reusing signal_port_name would collide two different types
+    under one identifier.
+    """
+    return "rstsig_" + _NON_IDENT_RE.sub("_", signal_node.get_path())
+
+
 class HierarchyMixin:
     """Track the addrmap/regfile hierarchy so registers in nested scopes get
     unique, identifier-safe names.

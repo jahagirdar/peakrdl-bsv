@@ -5,7 +5,12 @@ import sys
 from jinja2 import Environment, PackageLoader, select_autoescape
 from systemrdl import RDLCompiler, RDLListener, RDLWalker
 
-from .common import HierarchyMixin, resolve_signal_ref, signal_port_name
+from .common import (
+    HierarchyMixin,
+    reset_signal_port_name,
+    resolve_signal_ref,
+    signal_port_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +22,6 @@ UNSUPPORTED_FIELD_PROPS = (
     "sticky",
     "stickybit",
     "intr",
-    # Per-bit hw update masking: hw may update every bit of the field.
-    "hwenable",
-    "hwmask",
-    # Combinational next-value expression: not wired into the generated
-    # storage rule.
-    "next",
-    # Field always resets from the module's single global reset signal.
-    "resetsignal",
 )
 
 
@@ -43,6 +40,13 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
 
     def enter_Addrmap(self, node):
         """Address Map Handler."""
+        if not self.hier:
+            # Only mkCSRSignal_* modules for resetsignal-configured
+            # fields actually use Clocks (exposeCurrentClock/mkReset),
+            # but importing it unconditionally once per file is simpler
+            # than threading a "does anything in this file need it"
+            # flag through the whole walk.
+            print("import Clocks::*;", file=self.file)
         self._enter_scope(node)
         self.addrmap_name = node.get_path_segment()
 
@@ -89,6 +93,60 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
                     name,
                     prop,
                 )
+
+    def _resolve_masking_and_next(self, node, attr, name):
+        """Resolve hwenable/hwmask (per-bit hw update masking) and next
+        (the field's flip-flop D-input) to a full-width external signal
+        Wire, when modeled as a `signal` reference (the only reachable
+        dynamic form -- same limitation as we/wel above)."""
+        width = node.width
+        for prop, attr_key in (
+            ("hwenable", "hwenable_port"),
+            ("hwmask", "hwmask_port"),
+            ("next", "next_port"),
+        ):
+            attr[attr_key] = None
+            value = node.get_property(prop)
+            if value is None:
+                continue
+            sig = resolve_signal_ref(node, prop)
+            if sig is not None:
+                attr[attr_key] = signal_port_name(sig)
+                attr["ext_signals"][attr[attr_key]] = width
+            else:
+                logger.warning(
+                    "%s.%s: %s referencing a field/property (not a plain "
+                    "signal) is not supported by the BSV generator; the "
+                    "generated code ignores it.",
+                    self.reg_name,
+                    name,
+                    prop,
+                )
+
+    def _resolve_resetsignal(self, node, attr, name):
+        """Resolve resetsignal to a genuine module constructor argument
+        (see common.reset_signal_port_name). Building a true async
+        Reset domain (mkReset/assertReset) needs the driving condition
+        to be a real hardware value available when the Reg is created,
+        not something read inside a rule, so this can't reuse the
+        Action-method-pushed ext_signals mechanism above."""
+        attr["resetsignal_port"] = None
+        attr["resetsignal_active_low"] = False
+        value = node.get_property("resetsignal")
+        if value is None:
+            return
+        sig = resolve_signal_ref(node, "resetsignal")
+        if sig is None:
+            logger.warning(
+                "%s.%s: resetsignal referencing a field/property (not a "
+                "plain signal) is not supported by the BSV generator; "
+                "the generated code ignores it.",
+                self.reg_name,
+                name,
+            )
+            return
+        attr["resetsignal_port"] = reset_signal_port_name(sig)
+        attr["resetsignal_active_low"] = bool(sig.get_property("activelow"))
 
     def _resolve_counter_side(self, node, name, prop_value_name, bool_default):
         """Resolve a bool/int/dynamic-ref counter refinement property
@@ -204,12 +262,14 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
         # in list_properties() like the other properties above.
         attr["precedence"] = f"{node.get_property('precedence')}"
         # port_name -> width, for every external `signal` this field
-        # references (we/wel/swwe/swwel now; hwenable/hwmask/next later).
-        # Populated generically so the template can emit one Wire +
-        # top-level Ifc_CSRSignal_* method per port without hardcoding
-        # which property it came from.
+        # references (we/wel/swwe/swwel/hwenable/hwmask/next). Populated
+        # generically so the template can emit one Wire + top-level
+        # Ifc_CSRSignal_* method per port without hardcoding which
+        # property it came from.
         attr["ext_signals"] = {}
         self._resolve_write_enable_gates(node, attr, name)
+        self._resolve_masking_and_next(node, attr, name)
+        self._resolve_resetsignal(node, attr, name)
         if attr.get("counter"):
             self._resolve_counter(node, attr, name)
         for prop in UNSUPPORTED_FIELD_PROPS:
