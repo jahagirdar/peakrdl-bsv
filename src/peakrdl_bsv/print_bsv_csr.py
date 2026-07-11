@@ -43,20 +43,27 @@ class PrintBSVCSR(HierarchyMixin, RDLListener):
     from the top of the exported map.
     """
 
-    def __init__(self, bsvfile, test, default_regwidth):
-        """Initialization."""
+    def __init__(self, bsvfile, test, default_regwidth, import_name=None):
+        """Initialization.
+
+        import_name overrides the package name used in the
+        `import X_reg::*;` statement below -- see
+        PrintBSVReg.__init__ for why this can't just be the RDL's own
+        addrmap name.
+        """
         self.file = bsvfile
         self.gentest = test
         self.hier = []
         self.regwidth = []
         self.default_regwidth = default_regwidth
+        self.import_name = import_name
 
     def enter_Addrmap(self, node):
         """Addressmap handler."""
         if not self.hier:
             self.addrmap_name = node.get_path_segment()
             print(
-                f"import Vector::*;\nimport {self.addrmap_name}_reg::*;",
+                f"import Vector::*;\nimport {self.import_name or self.addrmap_name}_reg::*;",
                 file=self.file,
             )
             self.interface = ""

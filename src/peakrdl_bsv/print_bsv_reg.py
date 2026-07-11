@@ -17,12 +17,22 @@ _EXT_SIGNAL_PROPS = ("we", "wel", "swwe", "swwel", "hwenable", "hwmask", "next")
 class PrintBSVReg(HierarchyMixin, RDLListener):
     """Write Register defination file."""
 
-    def __init__(self, bsvfile, test, default_regwidth):
-        """Initialize."""
+    def __init__(self, bsvfile, test, default_regwidth, import_name=None):
+        """Initialize.
+
+        import_name overrides the package name used in the `import
+        X_signal::*;` statement below. It must match the *file* basename
+        the signal package was actually written to -- which is the
+        exporter's --rename value when given, not necessarily the RDL's
+        own addrmap name (see exporter.py). Defaults to the addrmap's
+        own name for direct/standalone use (e.g. tests) where the two
+        already coincide.
+        """
         self.file = bsvfile
         self.gentest = test
         self.hier = []
         self.default_regwidth = default_regwidth
+        self.import_name = import_name
 
     def enter_Addrmap(self, node):
         """Addressmap Handler."""
@@ -30,7 +40,10 @@ class PrintBSVReg(HierarchyMixin, RDLListener):
             # All registers, including those of nested addrmaps, use the
             # signal package generated for the top addrmap.
             self.addrmap_name = node.get_path_segment()
-            print(f"import {self.addrmap_name}_signal::*;", file=self.file)
+            print(
+                f"import {self.import_name or self.addrmap_name}_signal::*;",
+                file=self.file,
+            )
         self._enter_scope(node)
 
     def exit_Addrmap(self, node):

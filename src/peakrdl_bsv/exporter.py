@@ -49,13 +49,22 @@ class BSVExporter:  # pylint: disable=too-few-public-methods
                 root = rdlc.elaborate()
         except Exception:
             sys.exit()
+        # rename (--rename) changes top_node.inst_name away from the RDL's
+        # own addrmap name; the output files are always named after
+        # top_node.inst_name, so the cross-file `import X_signal::*;`/
+        # `import X_reg::*;` statements in the reg/csr files must use the
+        # same name too, not re-derive it from the addrmap node itself
+        # (see PrintBSVReg/PrintBSVCSR's import_name parameter) -- doing
+        # so previously left those imports referencing a package that
+        # doesn't exist whenever --rename was used.
+        import_name = top_node.inst_name
         fname = f"{outputpath}/{top_node.inst_name}"
         with open(fname + "_signal.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
             walker.walk(root, PrintBSVSignal(file, test, default_regwidth))
         with open(fname + "_reg.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVReg(file, test, default_regwidth))
+            walker.walk(root, PrintBSVReg(file, test, default_regwidth, import_name))
         with open(fname + "_csr.bsv", "w") as file:
             walker = RDLWalker(unroll=True)
-            walker.walk(root, PrintBSVCSR(file, test, default_regwidth))
+            walker.walk(root, PrintBSVCSR(file, test, default_regwidth, import_name))

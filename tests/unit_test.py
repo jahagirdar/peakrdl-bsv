@@ -6,6 +6,8 @@ systemrdl-compiler API and run without a Bluespec compiler.
 """
 import io
 import re
+import shutil
+import subprocess
 import textwrap
 
 import pytest
@@ -208,3 +210,45 @@ def test_gentest_wrapper(tmp_path):
     )
     assert "(*synthesize*)" in out["signal"]
     assert "module testcsrreg_r1_f" in out["signal"]
+
+
+def test_exporter_rename_keeps_cross_file_imports_consistent(tmp_path):
+    """The --rename CLI option changes the output file basenames
+    (top_node.inst_name), but PrintBSVReg/PrintBSVCSR's `import
+    X_signal::*;`/`import X_reg::*;` statements used to re-derive that
+    name from the RDL's own addrmap type name via node.get_path_
+    segment() instead, which peakrdl-cli's rename does NOT change (only
+    the node's inst_name identity, not the deeper path segment a
+    RDLListener sees while walking) -- so a renamed export referenced a
+    package that was never written, breaking bsc compilation of the
+    renamed output entirely. Invokes the real `peakrdl` CLI rather than
+    the exporter class directly, since the bug is in how peakrdl-cli's
+    rename interacts with this plugin, not reproducible by calling
+    BSVExporter().export() in isolation with a hand-set `rename=`."""
+    peakrdl_cli = shutil.which("peakrdl")
+    if peakrdl_cli is None:
+        pytest.skip("peakrdl CLI not available")
+
+    rdl = tmp_path / "test.rdl"
+    rdl.write_text(
+        textwrap.dedent(
+            """\
+            addrmap test {
+                reg r0 { field { sw = rw; hw = r; } f0[8] = 0; };
+                r0 i0 @ 0x0;
+            };
+        """
+        )
+    )
+    result = subprocess.run(
+        [peakrdl_cli, "bsv", "--rename", "Renamed", "-o", str(tmp_path), str(rdl)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+
+    reg_text = (tmp_path / "Renamed_reg.bsv").read_text()
+    csr_text = (tmp_path / "Renamed_csr.bsv").read_text()
+    assert "import Renamed_signal::*;" in reg_text
+    assert "import Renamed_reg::*;" in csr_text
