@@ -1127,6 +1127,51 @@ class TestResetSignal:
 
 
 # ===========================================================================
+#  9e. STICKY / STICKYBIT
+# ===========================================================================
+
+
+class TestStickyStickybit:
+    """Tests for sticky (whole-field freeze) and stickybit (per-bit
+    write-1-to-set-only) hw write behavior."""
+
+    def _rdl(self, prop):
+        return textwrap.dedent(
+            f"""\
+            addrmap test {{
+                reg r1 {{
+                    field {{ sw = rw; hw = rw; onwrite=woclr; {prop}; }} f0[8] = 0;
+                }};
+                r1 reg1 @ 0x0;
+            }};
+        """
+        )
+
+    def test_stickybit_ors_hw_write_into_current_value(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("stickybit"), tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"rr\s*=\s*r\s*\|\s*\(v\)"
+        ), "stickybit must OR the hw write into the current value, not overwrite it"
+
+    def test_sticky_freezes_whole_field_once_nonzero(self, tmpdir_str):
+        bsv = _compile_and_export(self._rdl("sticky"), tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"rr\s*=\s*\(r\s*!=\s*0\)\s*\?\s*r\s*:\s*\(v\)"
+        ), "sticky must freeze the field at its current value once nonzero"
+
+    def test_woclr_can_still_clear_a_sticky_field(self, tmpdir_str):
+        # sticky/stickybit only gate the *hw* write path; sw-side onwrite
+        # side effects (woclr here) are unaffected and still generated.
+        bsv = _compile_and_export(self._rdl("stickybit"), tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"rr\s*=\s*rr\s*&\s*~wdata"
+        ), "woclr must still be able to clear a stickybit field via software"
+
+
+# ===========================================================================
 # 10. REGISTER-LEVEL STRUCTURE
 # ===========================================================================
 

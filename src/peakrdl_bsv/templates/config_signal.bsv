@@ -151,13 +151,20 @@ rule r_write;
 		{%endif%}
 	end
 	{%- endset %}
+	{%- set hw_write_value %}{%if attr['hwenable_port']%}(v & w_{{attr['hwenable_port']}}) | (r & ~w_{{attr['hwenable_port']}}){%elif attr['hwmask_port']%}(v & ~w_{{attr['hwmask_port']}}) | (r & w_{{attr['hwmask_port']}}){%else%}v{%endif%}{%- endset %}
 	{%- set hw_write_block %}
 	{#- we/wel gate whether a genuine hw _write() call actually reaches
 	    the storage this cycle; unset/bool true is today's unconditional
 	    default. hwenable/hwmask (mutually exclusive per the compiler)
-	    additionally merge only the enabled/unmasked bits of the write
-	    with the field's current value, instead of overwriting it whole. -#}
-	else if(hw_wdata.wget( ) matches tagged Valid .v{%if attr['we_port']%} &&& (w_{{attr['we_port']}}==1){%elif attr['wel_port']%} &&& (w_{{attr['wel_port']}}==0){%endif%}) rr = {%if attr['hwenable_port']%}(v & w_{{attr['hwenable_port']}}) | (r & ~w_{{attr['hwenable_port']}}){%elif attr['hwmask_port']%}(v & ~w_{{attr['hwmask_port']}}) | (r & w_{{attr['hwmask_port']}}){%else%}v{%endif%};
+	    merge only the enabled/unmasked bits of the write with the
+	    field's current value, instead of overwriting it whole. sticky/
+	    stickybit (also mutually exclusive, both with each other and
+	    with hwenable/hwmask) wrap that result again: stickybit means a
+	    bit hw sets can never be hw-cleared (OR instead of replace);
+	    sticky means the whole field freezes once nonzero, ignoring
+	    further hw writes entirely until something else (sw/woclr/rclr/
+	    hwclr/clear()) resets it. -#}
+	else if(hw_wdata.wget( ) matches tagged Valid .v{%if attr['we_port']%} &&& (w_{{attr['we_port']}}==1){%elif attr['wel_port']%} &&& (w_{{attr['wel_port']}}==0){%endif%}) rr = {%if attr['sticky']%}(r != 0) ? r : ({{hw_write_value}}){%elif attr['stickybit']%}r | ({{hw_write_value}}){%else%}{{hw_write_value}}{%endif%};
 	{%- endset %}
 	{#- SystemRDL precedence property (default sw): decides which of a
 	    simultaneous hw write and sw write wins by checking that side's

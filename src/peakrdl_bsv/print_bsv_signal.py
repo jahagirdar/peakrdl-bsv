@@ -19,8 +19,6 @@ logger = logging.getLogger(__name__)
 UNSUPPORTED_FIELD_PROPS = (
     "ruser",
     "wuser",
-    "sticky",
-    "stickybit",
     "intr",
 )
 
@@ -261,6 +259,13 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
         # assigned, so always resolve it rather than gating on presence
         # in list_properties() like the other properties above.
         attr["precedence"] = f"{node.get_property('precedence')}"
+        # stickybit has a spec default of True when intr is set (unless
+        # sticky is also set), so it must be resolved the same way --
+        # via get_property, not gated on explicit presence in
+        # list_properties() -- to pick that default up correctly once a
+        # field also has intr; set.
+        attr["sticky"] = bool(node.get_property("sticky"))
+        attr["stickybit"] = bool(node.get_property("stickybit"))
         # port_name -> width, for every external `signal` this field
         # references (we/wel/swwe/swwel/hwenable/hwmask/next). Populated
         # generically so the template can emit one Wire + top-level
