@@ -93,6 +93,16 @@ FIELD_FEATURES = {
     "bidirectional_counter": (
         "field {sw=r; hw=r; counter; incrwidth=8; decrwidth=8;} f[7:0]=0;"
     ),
+    # Regression guard: incrsaturate/decrsaturate combined with
+    # incrwidth/decrwidth EQUAL to the field width used to fail to
+    # compile (bsc T0033, ambiguous type on the un-annotated `amt`
+    # local) -- found via independent blind-reference formal
+    # verification. Also exercises the incr+decr same-cycle combine
+    # fix (see test_counter_incr_decr_same_cycle below).
+    "bidirectional_counter_saturate": (
+        "field {sw=r; hw=r; counter; incrwidth=8; decrwidth=8; "
+        "incrsaturate=200; decrsaturate;} f[7:0]=0;"
+    ),
 }
 
 STRUCT_FEATURES = {
@@ -424,8 +434,13 @@ def test_counter_incr_decr(tmp_path):
     sig = out["signal"]
     assert "method Action incr" in sig
     assert "method Action decr" in sig
-    assert re.search(r"rr = r \+ amt;", rule_body(sig))
-    assert re.search(r"rr = r - amt;", rule_body(sig))
+    # incr and decr may both fire the same cycle (e.g. a FIFO occupancy
+    # counter incrementing on push and decrementing on pop at once), so
+    # both deltas are applied in sequence against a shared `cur` value
+    # rather than being mutually-exclusive else-if branches.
+    assert re.search(r"cur = cur \+ amt;", rule_body(sig))
+    assert re.search(r"cur = cur - amt;", rule_body(sig))
+    assert re.search(r"rr = cur;", rule_body(sig))
 
 
 def test_reductions(tmp_path):

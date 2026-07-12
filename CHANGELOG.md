@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 - Register arrays generated illegal identifiers (`SW_r1[0]_f`); elements are now named `r1_0`..`r1_N` with per-instance addresses.
 - Nested addrmaps generated imports of nonexistent packages and clobbered generator state; they are now flattened into the top CSR module with absolute address decode and scope-prefixed register names (`s1_ctrl`).
 - The CSR generator crashed on address maps containing memories (`max() iterable argument is empty`).
+- Counter fields combining `incrsaturate`/`decrsaturate` with an `incrwidth`/`decrwidth` equal to the field's own width failed to compile (`bsc` T0033, ambiguous type on an un-annotated `amt` local); `amt` is now given an explicit `Bit#(width)` type.
+- A hardware `incr()` and `decr()` invoked the same cycle on a bidirectional counter silently dropped the decrement (an else-if priority chain let only `incr` take effect); both deltas are now applied in sequence against a shared working value when both fire the same cycle. Found via independent blind-reference formal verification (BlueCheck + Yosys equivalence checking against reference models authored with no access to this generator's source or output).
 
 ### Added
 - Write side effects for all SystemRDL `onwrite` policies: `wclr`, `wset`, `wot`, `wzc`, `wzs` (in addition to `woclr`/`woset`).

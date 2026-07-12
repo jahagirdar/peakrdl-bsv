@@ -184,40 +184,55 @@ rule r_write;
 	{{ sw_write_block }}
 	{{ hw_write_block }}
 	{%endif%}
-	{%if attr['counter_up']%}
-	else if({%if attr['incr_is_pulse']%}pw_incr{%else%}r_incr.wget( ) matches tagged Valid .v{%endif%}) begin
-		{%if attr['incr_is_pulse']%}
-		let amt = {{node.width}}'d{{attr['incr_const']}};
-		{%else%}
-		let amt = zeroExtend(v);
+	{%if attr['counter_up'] or attr['counter_down']%}
+	{#- incr and decr are independent hw operations and may both be
+	    invoked the same cycle (e.g. a FIFO occupancy counter that
+	    increments on push and decrements on pop). Rather than an
+	    else-if priority chain (which would silently drop whichever
+	    direction is checked second), both deltas are applied in
+	    sequence against a single working value `cur` when both fire
+	    -- found via independent blind-reference formal verification
+	    that an else-if chain here silently dropped a simultaneous
+	    decr. -#}
+	else if({%if attr['counter_up']%}({%if attr['incr_is_pulse']%}pw_incr{%else%}isValid(r_incr.wget){%endif%}){%endif%}{%if attr['counter_up'] and attr['counter_down']%} || {%endif%}{%if attr['counter_down']%}({%if attr['decr_is_pulse']%}pw_decr{%else%}isValid(r_decr.wget){%endif%}){%endif%}) begin
+		Bit#({{node.width}}) cur = r;
+		{%if attr['counter_up']%}
+		if ({%if attr['incr_is_pulse']%}pw_incr{%else%}r_incr.wget( ) matches tagged Valid .v_incr{%endif%}) begin
+			{%if attr['incr_is_pulse']%}
+			Bit#({{node.width}}) amt = {{node.width}}'d{{attr['incr_const']}};
+			{%else%}
+			Bit#({{node.width}}) amt = zeroExtend(v_incr);
+			{%endif%}
+			{%if attr['incr_needs_wide']%}
+			Bit#(TAdd#({{node.width}},1)) wideSum = zeroExtend(cur) + zeroExtend(amt);
+			cur = (wideSum > zeroExtend({{node.width}}'d{{attr['incr_sat_max']}})) ? {{node.width}}'d{{attr['incr_sat_max']}} : truncate(wideSum);
+			{%else%}
+			{%if attr['has_overflow']%}
+			if (amt > ~cur) pw_overflow.send();
+			{%endif%}
+			cur = cur + amt;
+			{%endif%}
+		end
 		{%endif%}
-		{%if attr['incr_needs_wide']%}
-		Bit#(TAdd#({{node.width}},1)) wideSum = zeroExtend(r) + zeroExtend(amt);
-		rr = (wideSum > zeroExtend({{node.width}}'d{{attr['incr_sat_max']}})) ? {{node.width}}'d{{attr['incr_sat_max']}} : truncate(wideSum);
-		{%else%}
-		{%if attr['has_overflow']%}
-		if (amt > ~r) pw_overflow.send();
+		{%if attr['counter_down']%}
+		if ({%if attr['decr_is_pulse']%}pw_decr{%else%}r_decr.wget( ) matches tagged Valid .v_decr{%endif%}) begin
+			{%if attr['decr_is_pulse']%}
+			Bit#({{node.width}}) amt = {{node.width}}'d{{attr['decr_const']}};
+			{%else%}
+			Bit#({{node.width}}) amt = zeroExtend(v_decr);
+			{%endif%}
+			{%if attr['decr_needs_wide']%}
+			Bit#(TAdd#({{node.width}},1)) floorPlusAmt = zeroExtend(amt) + zeroExtend({{node.width}}'d{{attr['decr_sat_min']}});
+			cur = (floorPlusAmt > zeroExtend(cur)) ? {{node.width}}'d{{attr['decr_sat_min']}} : (cur - amt);
+			{%else%}
+			{%if attr['has_underflow']%}
+			if (amt > cur) pw_underflow.send();
+			{%endif%}
+			cur = cur - amt;
+			{%endif%}
+		end
 		{%endif%}
-		rr = r + amt;
-		{%endif%}
-	end
-	{%endif%}
-	{%if attr['counter_down']%}
-	else if({%if attr['decr_is_pulse']%}pw_decr{%else%}r_decr.wget( ) matches tagged Valid .v{%endif%}) begin
-		{%if attr['decr_is_pulse']%}
-		let amt = {{node.width}}'d{{attr['decr_const']}};
-		{%else%}
-		let amt = zeroExtend(v);
-		{%endif%}
-		{%if attr['decr_needs_wide']%}
-		Bit#(TAdd#({{node.width}},1)) floorPlusAmt = zeroExtend(amt) + zeroExtend({{node.width}}'d{{attr['decr_sat_min']}});
-		rr = (floorPlusAmt > zeroExtend(r)) ? {{node.width}}'d{{attr['decr_sat_min']}} : (r - amt);
-		{%else%}
-		{%if attr['has_underflow']%}
-		if (amt > r) pw_underflow.send();
-		{%endif%}
-		rr = r - amt;
-		{%endif%}
+		rr = cur;
 	end
 	{%endif%}
 	{%endif%}
