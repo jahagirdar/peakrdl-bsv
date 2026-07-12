@@ -1080,8 +1080,8 @@ class TestResetSignal:
         bsv = _compile_and_export(self._rdl("activehigh"), tmpdir_str)
         sig = bsv["signal"]
         assert _has(
-            sig, r"MakeResetIfc mr_rstsig <- mkReset\(1, False, clk_rstsig\)"
-        ), "resetsignal must build an independent async Reset domain"
+            sig, r"MakeResetIfc mr_rstsig <- mkReset\(1, True, clk_rstsig\)"
+        ), "resetsignal must build an independent async Reset domain that starts asserted"
         assert _has(
             sig, r"rule rl_assert_resetsignal \(rst_rstsig_\S+\)"
         ), "active-high resetsignal must assert when the signal is 1"
@@ -1124,6 +1124,21 @@ class TestResetSignal:
         assert _has(
             csr, r"mkConfigReg_reg1\(w_rst_rstsig_\S+\)"
         ), "ConfigCSR must pass its own Wire straight through to ConfigReg"
+
+    def test_reset_domain_starts_asserted(self, tmpdir_str):
+        # mkReset's startAsserted argument must be True: the field's
+        # declared SystemRDL reset value has to apply at power-on
+        # regardless of whether the external resetsignal condition ever
+        # pulses. A prior bug used False here, so the Reg (reset_by this
+        # domain) never received its initial reset at all unless
+        # assertReset() fired at least once at runtime -- found via
+        # independent blind-reference formal verification (Bluesim read
+        # the poison pattern 0xAA forever with the signal held
+        # deasserted, confirmed both before and after this fix).
+        bsv = _compile_and_export(self._rdl(), tmpdir_str)
+        assert _has(
+            bsv["signal"], r"mkReset\(1,\s*True,\s*clk_rstsig\)"
+        ), "the resetsignal-derived Reset domain must start asserted at power-on"
 
 
 # ===========================================================================

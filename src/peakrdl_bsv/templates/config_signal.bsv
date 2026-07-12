@@ -69,7 +69,15 @@ module mkCSRSignal_{{attr['reg_name']}}_{{attr['signal_name']}}#(Integer resetVa
 	    not an Action-pushed Wire like we/wel/etc -- see
 	    common.reset_signal_port_name for why). -#}
 	Clock clk_rstsig <- exposeCurrentClock;
-	MakeResetIfc mr_rstsig <- mkReset(1, False, clk_rstsig);
+	{#- startAsserted must be True: the field's declared SystemRDL reset
+	    value has to apply at power-on regardless of whether the
+	    external resetsignal condition ever pulses. With False here, the
+	    Reg below (reset_by this domain) never received its initial
+	    reset at all unless assertReset() fired at least once at
+	    runtime -- found via independent blind-reference formal
+	    verification (Bluesim read the poison pattern forever with the
+	    signal held deasserted, never settling to the declared value). -#}
+	MakeResetIfc mr_rstsig <- mkReset(1, True, clk_rstsig);
 	rule rl_assert_resetsignal ({%if attr['resetsignal_active_low']%}!rst_{{attr['resetsignal_port']}}{%else%}rst_{{attr['resetsignal_port']}}{%endif%});
 		mr_rstsig.assertReset;
 	endrule
