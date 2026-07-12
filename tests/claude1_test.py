@@ -1939,6 +1939,157 @@ class TestMetadataProperties:
 
 
 # ===========================================================================
+#  19b. PROPERTY COMBINATIONS
+# ===========================================================================
+
+
+class TestPropertyCombinations:
+    """Tests for multiple independent-mutex-group properties stacked on
+    one field. Each property is normally tested in isolation elsewhere;
+    bugs tend to hide in how the generated expressions actually compose
+    (e.g. does a later-added property wrap or clobber an earlier one's
+    result?)."""
+
+    def test_stickybit_wraps_hwenable_merge(self, tmpdir_str):
+        # stickybit must OR the *result* of the hwenable-masked merge,
+        # not just the raw hw write value -- so enabled-but-already-set
+        # bits stay set even if hwenable's own merge would have kept them
+        # unenabled bits are still preserved via hwenable's own r term.
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} en_sig[8];
+                reg r1 {
+                    field { sw = rw; hw = rw; stickybit; hwenable = en_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule,
+            r"rr\s*=\s*r\s*\|\s*\(\(v\s*&\s*w_ext_\S+\)\s*\|\s*\(r\s*&\s*~w_ext_\S+\)\)",
+        ), "stickybit must OR the whole hwenable-merged expression, not just v"
+
+    def test_we_gates_entry_hwenable_masks_result(self, tmpdir_str):
+        # we must guard the entire branch (no update at all when we=0);
+        # hwenable must only take effect on the bits it enables *within*
+        # that already-we-gated branch.
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} we_sig;
+                signal {} en_sig[8];
+                reg r1 {
+                    field { sw = rw; hw = rw; we = we_sig; hwenable = en_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule,
+            r"hw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(w_ext_\S+==1\)\)\s*rr\s*=\s*\(v\s*&\s*w_ext_\S+\)\s*\|\s*\(r\s*&\s*~w_ext_\S+\)",
+        ), "we must gate branch entry; hwenable must mask only within it"
+
+    def test_swwe_gates_entry_woclr_still_applies_inside(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} swwe_sig;
+                reg r1 {
+                    field { sw = rw; hw = r; onwrite=woclr; swwe = swwe_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule,
+            r"sw_wdata\.wget\(\s*\)\s*matches\s*tagged\s*Valid\s*\.v\s*&&&\s*\(tpl_2\(v\)\s*!=\s*0\)\s*&&&\s*\(w_ext_\S+==1\)\)\s*begin",
+        ), "swwe must gate the sw branch's entry condition"
+        assert _has(
+            rule, r"rr\s*=\s*rr\s*&\s*~wdata"
+        ), "woclr's per-bit clear must still apply once inside the branch"
+
+    def test_next_overrides_woclr_and_sticky_entirely(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} next_sig[8];
+                reg r1 {
+                    field { sw = rw; hw = rw; next = next_sig; onwrite=woclr; sticky; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(
+            rule, r"rr\s*=\s*w_ext_\S+;"
+        ), "next must unconditionally drive rr from the external signal"
+        assert _not_has(
+            rule, r"pw_clear|wdata|sw_wdata|hw_wdata"
+        ), "woclr/sticky (and every other update source) must be entirely absent once next is wired"
+
+    def test_resetsignal_applies_to_counter_storage(self, tmpdir_str):
+        # The alternate async reset domain must apply to the SAME Reg
+        # the counter's incr/saturate logic reads/writes -- not a
+        # separate, disconnected register.
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal { activehigh; } rst_sig;
+                reg r1 {
+                    field { sw = r; hw = r; counter; incrsaturate; resetsignal = rst_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        sig = bsv["signal"]
+        assert _has(
+            sig,
+            r"Reg#\(Bit#\(8\)\) r<-mkRegA\(fromInteger\(resetValue\), reset_by mr_rstsig\.new_rst\)",
+        ), "the counter's own storage Reg must use the resetsignal-derived Reset"
+        assert _has(
+            sig, r"TAdd#\(8,1\)"
+        ), "incrsaturate's widened clamp logic must still be generated alongside resetsignal"
+
+    def test_intr_stickybit_enable_all_compose(self, tmpdir_str):
+        rdl = textwrap.dedent(
+            """\
+            addrmap test {
+                signal {} en_sig[8];
+                reg r1 {
+                    field { sw = rw; hw = w; woclr; intr; stickybit; enable = en_sig; } f0[8] = 0;
+                };
+                r1 reg1 @ 0x0;
+            };
+        """
+        )
+        bsv = _compile_and_export(rdl, tmpdir_str)
+        # Field-level: stickybit ORs hw writes into the current value.
+        rule = _r_write_rule(bsv["signal"])
+        assert _has(rule, r"rr\s*=\s*r\s*\|\s*\(v\)")
+        # Register-level: the intr aggregate still just reads
+        # currentValue() (which reflects the field's real, sticky-OR'd
+        # state) masked by enable -- it doesn't need its own copy of the
+        # sticky logic.
+        assert _has(
+            bsv["reg"], r"sig_f0\.currentValue\(\)\s*&\s*w_ext_\S+"
+        ), "the intr aggregate must mask the field's real (sticky) current value by enable"
+
+
+# ===========================================================================
 # 20. EDGE CASES
 # ===========================================================================
 

@@ -129,6 +129,55 @@ STRUCT_FEATURES = {
     "intr_mask": "addrmap top { signal {} mask_sig[8]; reg { field {sw=rw; hw=w; woclr; intr; mask=mask_sig;} f[7:0]=0; } r1; };",
     "intr_haltenable": "addrmap top { signal {} halt_sig[8]; reg { field {sw=rw; hw=w; woclr; intr; haltenable=halt_sig;} f[7:0]=0; } r1; };",
     "intr_haltmask": "addrmap top { signal {} halt_sig[8]; reg { field {sw=rw; hw=w; woclr; intr; haltmask=halt_sig;} f[7:0]=0; } r1; };",
+    # --- combinations: independent mutex-group properties stacked on one
+    # field, since each is normally only tested in isolation and bugs
+    # tend to hide in how the generated expressions actually compose. ---
+    "combo_precedence_hw_hwenable": (
+        "addrmap top { signal {} en_sig[8]; "
+        "reg { field {sw=rw; hw=rw; precedence=hw; hwenable=en_sig;} f[7:0]=0; } r1; };"
+    ),
+    "combo_we_hwenable": (
+        "addrmap top { signal {} we_sig; signal {} en_sig[8]; "
+        "reg { field {sw=rw; hw=rw; we=we_sig; hwenable=en_sig;} f[7:0]=0; } r1; };"
+    ),
+    "combo_stickybit_hwenable": (
+        "addrmap top { signal {} en_sig[8]; "
+        "reg { field {sw=rw; hw=rw; stickybit; hwenable=en_sig;} f[7:0]=0; } r1; };"
+    ),
+    # NOTE: `we`/`wel` combined with `sticky`/`stickybit` is rejected by
+    # the compiler itself ("sticky fields already implicitly control
+    # their hardware write-enable behavior") -- confirmed by trying it
+    # here first. hwenable/hwmask are NOT considered a conflicting
+    # write-enable by the compiler, so combo_stickybit_hwenable above is
+    # the valid equivalent combination.
+    "combo_sticky_precedence_hw": (
+        "addrmap top { "
+        "reg { field {sw=rw; hw=rw; sticky; precedence=hw;} f[7:0]=0; } r1; };"
+    ),
+    "combo_swwe_woclr": (
+        "addrmap top { signal {} swwe_sig; "
+        "reg { field {sw=rw; hw=r; onwrite=woclr; swwe=swwe_sig;} f[7:0]=0; } r1; };"
+    ),
+    "combo_intr_stickybit_enable": (
+        "addrmap top { signal {} en_sig[8]; "
+        "reg { field {sw=rw; hw=w; woclr; intr; stickybit; enable=en_sig;} f[7:0]=0; } r1; };"
+    ),
+    "combo_resetsignal_counter_saturate": (
+        "addrmap top { signal {activehigh;} rst_sig; "
+        "reg { field {sw=r; hw=r; counter; incrsaturate; resetsignal=rst_sig;} f[7:0]=0; } r1; };"
+    ),
+    "combo_next_overrides_woclr_sticky": (
+        "addrmap top { signal {} next_sig[8]; "
+        "reg { field {sw=rw; hw=rw; next=next_sig; onwrite=woclr; sticky;} f[7:0]=0; } r1; };"
+    ),
+    "combo_hwmask_precedence_sw": (
+        "addrmap top { signal {} mask_sig[8]; "
+        "reg { field {sw=rw; hw=rw; precedence=sw; hwmask=mask_sig;} f[7:0]=0; } r1; };"
+    ),
+    "combo_wel_swwel": (
+        "addrmap top { signal {} wel_sig; signal {} swwel_sig; "
+        "reg { field {sw=rw; hw=rw; wel=wel_sig; swwel=swwel_sig;} f[7:0]=0; } r1; };"
+    ),
 }
 
 ALL_FEATURES = {**{k: reg_rdl(v) for k, v in FIELD_FEATURES.items()}, **STRUCT_FEATURES}
