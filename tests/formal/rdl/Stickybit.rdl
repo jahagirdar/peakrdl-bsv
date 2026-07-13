@@ -1,0 +1,6 @@
+addrmap top {
+    reg reg0 {
+        field {sw=rw; hw=rw; stickybit;} field0[7:0] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

@@ -14,6 +14,7 @@ and write-once enforcement) must produce an explicit warning instead of
 silently wrong RTL.
 """
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -27,7 +28,7 @@ from peakrdl_bsv.print_bsv_reg import PrintBSVReg
 from peakrdl_bsv.print_bsv_signal import PrintBSVSignal
 
 BSC = shutil.which("bsc") or "/opt/tools/bsc/bin/bsc"
-HAS_BSC = shutil.which("bsc") is not None or shutil.os.path.exists(BSC)
+HAS_BSC = shutil.which("bsc") is not None or os.path.exists(BSC)
 
 
 def reg_rdl(field_body):
@@ -218,9 +219,11 @@ def gen_field(field_body, tmp_path):
 
 
 def module_body(signal_text, module="mkCSRSignal_r1_f"):
-    """Extract one signal module's implementation (interface declarations at
-    the top of the file share the same method signatures, so all method
-    searches must be scoped to the module body)."""
+    """Extract one signal module's implementation.
+
+    Interface declarations at the top of the file share the same method
+    signatures, so all method searches must be scoped to the module body.
+    """
     return re.search(rf"module {module}#.*?endmodule", signal_text, re.S).group(0)
 
 
@@ -262,6 +265,7 @@ def test_bsc_elaborates(feature, tmp_path):
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
         assert result.returncode == 0, (
             f"bsc failed on top_{suffix}.bsv for feature {feature}:\n"
@@ -375,7 +379,7 @@ def test_swacc_fires_on_read_and_write(tmp_path):
     ],
 )
 def test_swmod_on_write(field, mod_expr, tmp_path):
-    """swmod pulses only when the write actually modifies the field."""
+    """Swmod pulses only when the write actually modifies the field."""
     out = gen_field(field, tmp_path)
     write = sw_write_method(out["signal"])
     assert re.search(mod_expr, write), write

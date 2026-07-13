@@ -1,0 +1,30 @@
+# ResetSignal configs build a field-local async reset domain via the
+# Clocks package on BOTH sides (blind ref and generator instantiate an
+# identical MakeResetA -> SyncResetA subtree). Those two bsc library
+# primitives must be read in so Yosys can flatten through the reset
+# domain rather than treating it as a black box; the test driver copies
+# them from bsc's Verilog library dir. async2sync (already in the shared
+# boilerplate below) handles the async-reset FFs for equiv_induct.
+read_verilog MakeResetA.v
+read_verilog SyncResetA.v
+read_verilog mkResetSignalLow.v
+read_verilog gold_top.v
+read_verilog testcsrreg_reg0_field0.v
+read_verilog gate_top.v
+
+rename gold_top gold
+rename gate_top gate
+
+proc
+memory
+flatten gold
+flatten gate
+delete mkResetSignalLow
+delete testcsrreg_reg0_field0
+
+equiv_make gold gate equiv
+hierarchy -top equiv
+prep
+async2sync
+equiv_induct
+equiv_status -assert

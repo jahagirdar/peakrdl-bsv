@@ -13,10 +13,11 @@ def sanitize(segment):
 
 
 def resolve_signal_ref(node, prop_name):
-    """Return the SignalNode a property references, or None when it's
-    unset, a plain bool, or a Field/PropertyReference value.
+    """Return the SignalNode a property references, or None otherwise.
 
-    Field/PropertyReference values are a valid SystemRDL construct per the
+    None is returned when the property is unset, a plain bool, or a
+    Field/PropertyReference value. Field/PropertyReference values are a
+    valid SystemRDL construct per the
     property's valid_types, but (like the `next` property) don't resolve
     through this compiler's namespace lookup for simple instance-name
     references -- only a `signal` component reference actually parses. So
@@ -29,11 +30,13 @@ def resolve_signal_ref(node, prop_name):
 
 
 def signal_port_name(signal_node):
-    """Stable, BSV-legal method/port name for an external signal, derived
-    from its full elaborated path so identically-named signals declared
-    in different scopes don't collide. The same signal instance
+    """Stable, BSV-legal method/port name for an external signal.
+
+    Derived from its full elaborated path so identically-named signals
+    declared in different scopes don't collide. The same signal instance
     referenced from multiple fields/registers resolves to the same path
-    and therefore the same port name, so callers can dedup by name."""
+    and therefore the same port name, so callers can dedup by name.
+    """
     return "ext_" + _NON_IDENT_RE.sub("_", signal_node.get_path())
 
 
@@ -52,8 +55,7 @@ def reset_signal_port_name(signal_node):
 
 
 class HierarchyMixin:
-    """Track the addrmap/regfile hierarchy so registers in nested scopes get
-    unique, identifier-safe names.
+    """Track the addrmap/regfile hierarchy for unique, identifier-safe names.
 
     Registers directly under the exported addrmap keep their plain instance
     name; registers in nested addrmaps/regfiles are prefixed with the scope
@@ -62,14 +64,15 @@ class HierarchyMixin:
 
     hier: list
 
-    def _enter_scope(self, node):
+    def _enter_scope(self, node) -> None:
         self.hier.append(sanitize(node.get_path_segment()))
 
-    def _exit_scope(self, node):
+    def _exit_scope(self, node) -> None:
         self.hier.pop()
 
-    def _reg_name(self, node):
+    def _reg_name(self, node) -> str:
         return "_".join([*self.hier[1:], sanitize(node.get_path_segment())])
 
-    enter_Regfile = _enter_scope
-    exit_Regfile = _exit_scope
+    # RDLListener dispatch requires these exact mixedCase names.
+    enter_Regfile = _enter_scope  # noqa: N815
+    exit_Regfile = _exit_scope  # noqa: N815

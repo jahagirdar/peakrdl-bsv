@@ -1,0 +1,27 @@
+read_verilog mkTop.v
+read_verilog gold_wrap.v
+proc
+hierarchy -top gold_wrap
+flatten
+rename gold_wrap gold
+
+design -stash gold_design
+
+read_verilog gate_core.v
+read_verilog gate_wrap.v
+proc
+hierarchy -top gate_wrap
+flatten
+rename gate_wrap gate
+
+design -stash gate_design
+
+design -copy-from gold_design -as gold gold
+design -copy-from gate_design -as gate gate
+
+equiv_make gold gate equiv
+hierarchy -top equiv
+prep
+async2sync
+equiv_induct
+equiv_status -assert

@@ -1,0 +1,7 @@
+addrmap top {
+    signal {activelow;} rst_sig;
+    reg reg0 {
+        field {sw=rw; hw=r; resetsignal=rst_sig;} field0[7:0] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

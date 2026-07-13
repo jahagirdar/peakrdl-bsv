@@ -1,0 +1,1 @@
+addrmap top { signal {} wel_sig; signal {} swwel_sig; reg reg0 { field {sw=rw; hw=rw; wel=wel_sig; swwel=swwel_sig;} field0[7:0]=0; } reg0; };

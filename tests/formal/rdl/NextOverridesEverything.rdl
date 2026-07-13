@@ -1,0 +1,7 @@
+addrmap NextOverridesEverything {
+    signal {} next_sig[8];
+    reg reg0 {
+        field {sw=rw; hw=rw; next=next_sig; onwrite=woclr; sticky;} field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

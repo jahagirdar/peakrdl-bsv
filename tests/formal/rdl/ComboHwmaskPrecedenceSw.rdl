@@ -1,0 +1,1 @@
+addrmap top { signal {} mask_sig[8]; reg reg0 { field {sw=rw; hw=rw; precedence=sw; hwmask=mask_sig;} field0[7:0]=0; } reg0; };

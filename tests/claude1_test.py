@@ -1,5 +1,4 @@
-"""
-Comprehensive test suite for peakrdl-bsv.
+"""Comprehensive test suite for peakrdl-bsv.
 
 Verifies that the BSV exporter generates structurally correct Bluespec code
 for every field property defined in the SystemRDL 2.0 specification.
@@ -15,26 +14,22 @@ import logging
 import os
 import re
 import sys
-import tempfile
 import textwrap
 import pytest
+from systemrdl import RDLCompiler, RDLWalker
+from systemrdl.messages import RDLCompileError
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _compile_and_export(rdl_text: str, tmpdir: str, test: bool = False):
-    """
-    Compile *rdl_text* with systemrdl and export BSV files into *tmpdir*.
+def _compile_and_export(rdl_text: str, tmpdir: str, test: bool = False) -> dict:
+    """Compile *rdl_text* with systemrdl and export BSV files into *tmpdir*.
 
     Returns a dict with keys 'signal', 'reg', 'csr' containing the
     text contents of the three generated files.
     """
-    from systemrdl import RDLCompiler, RDLWalker
-    import sys
-    import io
-
     # Write the RDL source to a temp file
     rdl_path = os.path.join(tmpdir, "test.rdl")
     with open(rdl_path, "w") as f:
@@ -49,9 +44,9 @@ def _compile_and_export(rdl_text: str, tmpdir: str, test: bool = False):
     if project_dir not in sys.path:
         sys.path.insert(0, project_dir)
 
-    from peakrdl_bsv.print_bsv_signal import PrintBSVSignal
-    from peakrdl_bsv.print_bsv_reg import PrintBSVReg
-    from peakrdl_bsv.print_bsv_csr import PrintBSVCSR
+    from peakrdl_bsv.print_bsv_signal import PrintBSVSignal  # noqa: PLC0415
+    from peakrdl_bsv.print_bsv_reg import PrintBSVReg  # noqa: PLC0415
+    from peakrdl_bsv.print_bsv_csr import PrintBSVCSR  # noqa: PLC0415
 
     results = {}
     for suffix, cls in [
@@ -145,8 +140,6 @@ class TestSwAccess:
         # systemrdl-compiler itself as a hard compile error ("not accessible
         # by software ... what's the point?") regardless of hw= — there is
         # no BSV to generate for this case, so just assert it's rejected.
-        from systemrdl.messages import RDLCompileError
-
         rdl = textwrap.dedent(
             """\
             addrmap test {
@@ -169,7 +162,7 @@ class TestSwAccess:
 class TestHwAccess:
     """Tests for hardware access type (hw property)."""
 
-    def _rdl(self, hw):
+    def _rdl(self, hw) -> str:
         return textwrap.dedent(
             f"""\
             addrmap test {{
@@ -407,7 +400,7 @@ class TestSwaccSwmod:
 class TestReductionProperties:
     """Tests for anded, ored, and xored reduction methods."""
 
-    def _rdl(self, prop):
+    def _rdl(self, prop) -> str:
         return textwrap.dedent(
             f"""\
             addrmap test {{
@@ -583,7 +576,7 @@ class TestCounter:
 class TestCounterRefinements:
     """Tests for counter refinements beyond the bare incr()/decr() pair."""
 
-    def _rdl(self, field_body):
+    def _rdl(self, field_body) -> str:
         return textwrap.dedent(
             f"""\
             addrmap test {{
@@ -703,7 +696,7 @@ class TestCounterRefinements:
         assert _has(bsv["signal"], r"method Action incr\(Bit#\(8\) count\)")
 
     @staticmethod
-    def _r_write_rule(sig):
+    def _r_write_rule(sig) -> str:
         m = re.search(r"rule r_write;.*?endrule", sig, re.S)
         assert m, "r_write rule must be present"
         return m.group(0)
@@ -804,7 +797,7 @@ class TestOnwrite:
 class TestPrecedence:
     """Tests for the hw-vs-sw simultaneous-write precedence property."""
 
-    def _rdl(self, precedence=None):
+    def _rdl(self, precedence=None) -> str:
         prec_line = f"precedence = {precedence};" if precedence else ""
         return textwrap.dedent(
             f"""\
@@ -817,7 +810,7 @@ class TestPrecedence:
         """
         )
 
-    def _r_write_rule(self, sig):
+    def _r_write_rule(self, sig) -> str:
         m = re.search(r"rule r_write;.*?endrule", sig, re.S)
         assert m, "r_write rule must be present"
         return m.group(0)
@@ -872,8 +865,7 @@ class TestPrecedence:
 
 
 class TestExternalSignalGating:
-    """Tests for we/wel (hw write-enable) and swwe/swwel (sw write-enable)
-    gated by an external `signal`.
+    """Tests for we/wel/swwe/swwel (hw/sw write-enable) gated by an external `signal`.
 
     Only a `signal` reference is modeled (a Field/PropertyReference value
     is valid per the SystemRDL spec but doesn't resolve through this
@@ -882,7 +874,7 @@ class TestExternalSignalGating:
     handling since it matches the always-writable default.
     """
 
-    def _rdl(self, prop, reg_name="r1", extra_field=""):
+    def _rdl(self, prop, reg_name="r1", extra_field="") -> str:
         return textwrap.dedent(
             f"""\
             addrmap topmap {{
@@ -999,11 +991,13 @@ class TestExternalSignalGating:
 
 
 class TestHwEnableMaskNext:
-    """Tests for hwenable/hwmask (per-bit hw update masking) and next (the
-    field's flip-flop D-input), all modeled as a full-width `signal`
-    reference -- the same signal-only limitation as we/wel/swwe/swwel."""
+    """Tests for hwenable/hwmask (per-bit hw masking) and next (D-input).
 
-    def _rdl(self, prop, hw="rw"):
+    All modeled as a full-width `signal` reference -- the same
+    signal-only limitation as we/wel/swwe/swwel.
+    """
+
+    def _rdl(self, prop, hw="rw") -> str:
         return textwrap.dedent(
             f"""\
             addrmap topmap {{
@@ -1045,8 +1039,6 @@ class TestHwEnableMaskNext:
     def test_next_requires_hw_writable(self, tmpdir_str):
         # SystemRDL requires next's field to be hw-writable; hw=r should
         # be rejected by the compiler itself before generation even runs.
-        from systemrdl.messages import RDLCompileError
-
         rdl = self._rdl("next", hw="r")
         with pytest.raises(RDLCompileError):
             _compile_and_export(rdl, tmpdir_str)
@@ -1058,12 +1050,14 @@ class TestHwEnableMaskNext:
 
 
 class TestResetSignal:
-    """Tests for resetsignal: a genuine independent async Reset domain
-    (mkReset/assertReset), built from a module *constructor argument*
-    rather than the Action-method ext_signals mechanism (see
-    common.reset_signal_port_name)."""
+    """Tests for resetsignal: a genuine independent async Reset domain.
 
-    def _rdl(self, polarity="activehigh"):
+    Built via mkReset/assertReset from a module *constructor argument*
+    rather than the Action-method ext_signals mechanism (see
+    common.reset_signal_port_name).
+    """
+
+    def _rdl(self, polarity="activehigh") -> str:
         return textwrap.dedent(
             f"""\
             addrmap topmap {{
@@ -1147,10 +1141,9 @@ class TestResetSignal:
 
 
 class TestStickyStickybit:
-    """Tests for sticky (whole-field freeze) and stickybit (per-bit
-    write-1-to-set-only) hw write behavior."""
+    """Tests for sticky (whole-field freeze) and stickybit (per-bit write-1-to-set-only)."""
 
-    def _rdl(self, prop):
+    def _rdl(self, prop) -> str:
         return textwrap.dedent(
             f"""\
             addrmap test {{
@@ -1192,10 +1185,11 @@ class TestStickyStickybit:
 
 
 class TestInterruptAggregation:
-    """Tests for the register-level interrupt/halt aggregate ConfigReg
-    builds by OR-reducing every intr field's (qualified) current value.
+    """Tests for the register-level interrupt/halt aggregate OR-reduction.
 
-    enable/mask/haltenable/haltmask are only modeled as a `signal`
+    ConfigReg builds this by OR-reducing every intr field's (qualified)
+    current value. enable/mask/haltenable/haltmask are only modeled as
+    a `signal`
     reference, same limitation as we/wel/etc (a Field/PropertyReference
     value doesn't resolve through this compiler's namespace lookup).
     """
@@ -1323,7 +1317,7 @@ class TestInterruptAggregation:
 class TestRegisterStructure:
     """Tests for the generated register-level BSV module."""
 
-    def _rdl_multi_field(self):
+    def _rdl_multi_field(self) -> str:
         return textwrap.dedent(
             """\
             addrmap test {
@@ -1535,7 +1529,7 @@ class TestRegWidth:
 class TestCSRModule:
     """Tests for the top-level CSR address-decoding module."""
 
-    def _rdl_two_regs(self):
+    def _rdl_two_regs(self) -> str:
         return textwrap.dedent(
             """\
             addrmap test {
@@ -1756,7 +1750,7 @@ class TestIntegration:
 class TestGentest:
     """Tests for the test-mode synthesize wrapper generation."""
 
-    def _simple_rdl(self):
+    def _simple_rdl(self) -> str:
         return textwrap.dedent(
             """\
             addrmap test {
@@ -1789,14 +1783,14 @@ class TestGentest:
 
 
 # ===========================================================================
-# 16. SIGNAL FILE – INTERNAL WIRE DECLARATIONS
+# 16. SIGNAL FILE - INTERNAL WIRE DECLARATIONS
 # ===========================================================================
 
 
 class TestSignalInternals:
     """Verify correct internal BSV wire declarations inside signal modules."""
 
-    def _simple_rdl(self):
+    def _simple_rdl(self) -> str:
         return textwrap.dedent(
             """\
             addrmap test {
@@ -1921,7 +1915,7 @@ class TestNestedAddrmap:
 
 
 # ===========================================================================
-# 19. NAME / DESC PROPERTIES  (metadata – should not crash export)
+# 19. NAME / DESC PROPERTIES  (metadata - should not crash export)
 # ===========================================================================
 
 
@@ -1959,11 +1953,13 @@ class TestMetadataProperties:
 
 
 class TestPropertyCombinations:
-    """Tests for multiple independent-mutex-group properties stacked on
-    one field. Each property is normally tested in isolation elsewhere;
-    bugs tend to hide in how the generated expressions actually compose
-    (e.g. does a later-added property wrap or clobber an earlier one's
-    result?)."""
+    """Tests for multiple independent-mutex-group properties stacked on one field.
+
+    Each property is normally tested in isolation elsewhere; bugs tend
+    to hide in how the generated expressions actually compose (e.g.
+    does a later-added property wrap or clobber an earlier one's
+    result?).
+    """
 
     def test_stickybit_wraps_hwenable_merge(self, tmpdir_str):
         # stickybit must OR the *result* of the hwenable-masked merge,

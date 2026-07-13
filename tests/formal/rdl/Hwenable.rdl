@@ -1,0 +1,7 @@
+addrmap top {
+    signal {} gate_sig[8];
+    reg reg0 {
+        field {sw=rw; hw=rw; hwenable=gate_sig;} field0[7:0] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

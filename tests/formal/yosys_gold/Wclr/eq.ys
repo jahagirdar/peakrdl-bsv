@@ -1,0 +1,23 @@
+read_verilog mkWclr.v
+read_verilog mkGoldWclr.v
+read_verilog gold_top.v
+read_verilog testcsrreg_reg0_field0.v
+read_verilog gate_top.v
+
+rename gold_top gold
+rename gate_top gate
+
+proc
+memory
+flatten gold
+flatten gate
+delete mkWclr
+delete mkGoldWclr
+delete testcsrreg_reg0_field0
+
+equiv_make gold gate equiv
+hierarchy -top equiv
+prep
+async2sync
+equiv_induct
+equiv_status -assert

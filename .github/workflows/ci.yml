@@ -89,3 +89,32 @@ jobs:
       run: pdm run peakrdl bsv tests/test.rdl -o .
     - name: run pytest
       run: pdm run pytest -rP
+
+  tests-bsc-yosys:
+    # The plain `tests` job above has no Bluespec compiler or Yosys, so
+    # every bsc-elaboration test (tests/systemrdl_features_test.py's
+    # test_bsc_elaborates matrix, plus the bsc-based checks in
+    # claude1_test.py) silently skips instead of running. This job uses
+    # the rtl_unit_docker image, which bundles bsc (via Nix) and Yosys
+    # (from the librelane base image), so those tests actually execute.
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/dyu-copier/rtl_unit_tools:latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install this package (editable) and test dependencies
+      run: |
+        pip install -e .
+        pip install pytest pytest-mock
+
+    - name: Clone BlueCheck (needed by tests/formal_regression_test.py)
+      run: git clone --depth=1 https://github.com/CTSRD-CHERI/BlueCheck /tmp/BlueCheck
+
+    - name: Point tests/formal_regression_test.py at the BlueCheck checkout
+      run: echo "BLUECHECK_DIR=/tmp/BlueCheck" >> "$GITHUB_ENV"
+
+    - name: Run the full test suite (bsc + yosys available)
+      run: pytest -rP

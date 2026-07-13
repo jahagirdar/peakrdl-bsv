@@ -1,0 +1,1 @@
+addrmap top { reg reg0 { field {sw=r; hw=r; counter; incrvalue=5; decrvalue=3;} field0[7:0]=0; } reg0; };

@@ -1,0 +1,6 @@
+addrmap test {
+    reg reg0 {
+        field { sw = rw; hw = r; onwrite = wzc; } field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

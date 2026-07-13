@@ -1,0 +1,6 @@
+addrmap HwNa {
+    reg reg0 {
+        field {sw=rw; hw=na;} field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

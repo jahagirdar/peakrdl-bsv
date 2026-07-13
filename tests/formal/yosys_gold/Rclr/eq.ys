@@ -1,0 +1,20 @@
+read_verilog mkGoldTop.v
+read_verilog gold_wrap.v
+read_verilog testcsrreg_reg0_field0.v
+read_verilog gate_wrap.v
+
+proc
+memory
+flatten gold
+flatten gate
+delete mkGoldTop
+delete testcsrreg_reg0_field0
+
+equiv_make gold gate equiv
+hierarchy -top equiv
+prep
+async2sync
+equiv_induct
+equiv_induct
+equiv_induct
+equiv_status -assert

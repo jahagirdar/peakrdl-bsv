@@ -54,8 +54,10 @@ def ctrl(tmp_path_factory):
 
 
 def test_minimal_rdl_no_explicit_properties(tmp_path):
-    """RDL relying on spec defaults must not crash (issue-6 class of bug)
-    and must fall back to the spec default regwidth of 32."""
+    """RDL relying on spec defaults must not crash (issue-6 class of bug).
+
+    Must also fall back to the spec default regwidth of 32.
+    """
     out = generate("addrmap top { reg { field {} f; } myreg; };", tmp_path)
     assert "Bit#(32)" in out["reg"]
     assert "Bit#(32)" in out["csr"]
@@ -138,7 +140,7 @@ def test_rclr_clears_on_read(tmp_path):
 
 
 def test_woclr_clears_written_ones(tmp_path):
-    """woclr clears exactly the bits written as 1 (per-bit, any width)."""
+    """Woclr clears exactly the bits written as 1 (per-bit, any width)."""
     out = generate(
         "addrmap top { reg { field {sw=rw; woclr; hw=w;} intr[0:0]=0; } r1; };",
         tmp_path,
@@ -213,8 +215,10 @@ def test_gentest_wrapper(tmp_path):
 
 
 def test_exporter_rename_keeps_cross_file_imports_consistent(tmp_path):
-    """The --rename CLI option changes the output file basenames
-    (top_node.inst_name), but PrintBSVReg/PrintBSVCSR's `import
+    """Regression test for the --rename CLI option breaking cross-file imports.
+
+    --rename changes the output file basenames (top_node.inst_name),
+    but PrintBSVReg/PrintBSVCSR's `import
     X_signal::*;`/`import X_reg::*;` statements used to re-derive that
     name from the RDL's own addrmap type name via node.get_path_
     segment() instead, which peakrdl-cli's rename does NOT change (only
@@ -224,7 +228,8 @@ def test_exporter_rename_keeps_cross_file_imports_consistent(tmp_path):
     renamed output entirely. Invokes the real `peakrdl` CLI rather than
     the exporter class directly, since the bug is in how peakrdl-cli's
     rename interacts with this plugin, not reproducible by calling
-    BSVExporter().export() in isolation with a hand-set `rename=`."""
+    BSVExporter().export() in isolation with a hand-set `rename=`.
+    """
     peakrdl_cli = shutil.which("peakrdl")
     if peakrdl_cli is None:
         pytest.skip("peakrdl CLI not available")
@@ -245,6 +250,7 @@ def test_exporter_rename_keeps_cross_file_imports_consistent(tmp_path):
         capture_output=True,
         text=True,
         timeout=60,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 

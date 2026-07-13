@@ -1,0 +1,7 @@
+addrmap IntrHalt {
+    signal {} halt_en_sig[8];
+    reg reg0 {
+        field {sw=rw; hw=w; woclr; intr; haltenable=halt_en_sig;} field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

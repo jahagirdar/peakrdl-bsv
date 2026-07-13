@@ -1,0 +1,6 @@
+addrmap CounterThreshold {
+    reg reg0 {
+        field {sw=r; hw=r; counter; incrthreshold=200;} field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

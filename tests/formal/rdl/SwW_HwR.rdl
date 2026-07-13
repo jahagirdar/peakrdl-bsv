@@ -1,0 +1,5 @@
+addrmap top {
+  reg reg0 {
+    field {sw=w; hw=r;} field0[7:0]=0;
+  } reg0;
+};

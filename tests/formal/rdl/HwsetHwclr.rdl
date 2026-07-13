@@ -1,0 +1,6 @@
+addrmap HwsetHwclr {
+    reg reg0 {
+        field {sw=r; hw=r; hwset; hwclr;} field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

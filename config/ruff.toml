@@ -126,6 +126,8 @@ ignore = [
     "S101",
     "PLR2004",  # Magic value used in comparison
     "S101",  # Use of assert detected
+    "D102",  # Missing docstring in public method -- test names are self-descriptive
+    "D103",  # Missing docstring in public function -- test names are self-descriptive
 ]
 
 [flake8-quotes]

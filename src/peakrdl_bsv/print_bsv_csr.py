@@ -126,9 +126,11 @@ class PrintBSVCSR(HierarchyMixin, RDLListener):
         # this register's fields have all been visited.
 
     def enter_Field(self, node):
-        """Field Handler: catalog external `signal` references so this
-        top module can expose one input per unique signal and relay it
-        down to whichever register(s) actually need it."""
+        """Field Handler: catalog external `signal` references.
+
+        This top module can then expose one input per unique signal and
+        relay it down to whichever register(s) actually need it.
+        """
         for prop in _EXT_SIGNAL_PROPS:
             sig = resolve_signal_ref(node, prop)
             if sig is None:
@@ -145,13 +147,15 @@ class PrintBSVCSR(HierarchyMixin, RDLListener):
                 ports.append(reset_port)
 
     def exit_Reg(self, node):
-        """Now that every field in this register has been visited (and
-        thus every resetsignal constructor argument it needs is known),
-        build the register's own instantiation line: reg_X's Bool
+        """Build the register's instantiation line now that all its fields are visited.
+
+        Every field must be visited first so every resetsignal
+        constructor argument it needs is known: reg_X's Bool
         resetsignal args are supplied straight from this CSR module's
         own Wires -- a plain pass-through, no relay rule needed, since
         referencing a Wire's value directly at instantiation is already
-        continuous."""
+        continuous.
+        """
         reset_args = ", ".join(
             f"w_rst_{port}" for port in self.reg_reset_ports.get(self.reg_name, [])
         )

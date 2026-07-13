@@ -1,0 +1,6 @@
+addrmap CounterOverflowUnderflow {
+    reg reg0 {
+        field {sw=r; hw=r; counter; incrwidth=8; decrwidth=8; overflow; underflow;} field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

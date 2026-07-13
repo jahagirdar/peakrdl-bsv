@@ -1,0 +1,7 @@
+addrmap Next {
+    signal {} next_sig[8];
+    reg reg0 {
+        field {sw=r; hw=rw; next=next_sig;} field0[8] = 0;
+    };
+    reg0 reg0 @ 0x0;
+};

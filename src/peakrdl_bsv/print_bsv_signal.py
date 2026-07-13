@@ -1,6 +1,7 @@
 """Write Bluespec Signal class."""
 import logging
 import sys
+from typing import Optional
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 from systemrdl import RDLCompiler, RDLListener, RDLWalker
@@ -57,21 +58,23 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
                 self.reg_name,
             )
 
-    def _resolve_write_enable_gates(self, node, attr, name):
-        """Resolve we/wel (hw write-enable) and swwe/swwel (sw
-        write-enable) gating: only a `signal` reference is modeled (see
+    def _resolve_write_enable_gates(self, node, attr, name) -> None:
+        """Resolve we/wel/swwe/swwel (hw/sw write-enable) gating.
+
+        Only a `signal` reference is modeled (see
         common.resolve_signal_ref -- a Field/PropertyReference value is a
         valid SystemRDL construct but, like `next`, doesn't resolve
         through this compiler's namespace lookup in practice). The plain
         bool form needs no handling: `we=true`/`swwe=true`/unset is
-        already the generator's default (always enabled to write)."""
+        already the generator's default (always enabled to write).
+        """
         prop_to_attr = {
             "we": "we_port",
             "wel": "wel_port",
             "swwe": "swwe_port",
             "swwel": "swwel_port",
         }
-        for prop, attr_key in prop_to_attr.items():
+        for attr_key in prop_to_attr.values():
             attr[attr_key] = None
         for prop, attr_key in prop_to_attr.items():
             value = node.get_property(prop)
@@ -91,11 +94,14 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
                     prop,
                 )
 
-    def _resolve_masking_and_next(self, node, attr, name):
-        """Resolve hwenable/hwmask (per-bit hw update masking) and next
-        (the field's flip-flop D-input) to a full-width external signal
-        Wire, when modeled as a `signal` reference (the only reachable
-        dynamic form -- same limitation as we/wel above)."""
+    def _resolve_masking_and_next(self, node, attr, name) -> None:
+        """Resolve hwenable/hwmask/next to a full-width external signal Wire.
+
+        hwenable/hwmask (per-bit hw update masking) and next (the
+        field's flip-flop D-input), when modeled as a `signal` reference
+        (the only reachable dynamic form -- same limitation as we/wel
+        above).
+        """
         width = node.width
         for prop, attr_key in (
             ("hwenable", "hwenable_port"),
@@ -120,13 +126,15 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
                     prop,
                 )
 
-    def _resolve_resetsignal(self, node, attr, name):
-        """Resolve resetsignal to a genuine module constructor argument
-        (see common.reset_signal_port_name). Building a true async
+    def _resolve_resetsignal(self, node, attr, name) -> None:
+        """Resolve resetsignal to a genuine module constructor argument.
+
+        See common.reset_signal_port_name. Building a true async
         Reset domain (mkReset/assertReset) needs the driving condition
         to be a real hardware value available when the Reg is created,
         not something read inside a rule, so this can't reuse the
-        Action-method-pushed ext_signals mechanism above."""
+        Action-method-pushed ext_signals mechanism above.
+        """
         attr["resetsignal_port"] = None
         attr["resetsignal_active_low"] = False
         value = node.get_property("resetsignal")
@@ -145,10 +153,14 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
         attr["resetsignal_port"] = reset_signal_port_name(sig)
         attr["resetsignal_active_low"] = bool(sig.get_property("activelow"))
 
-    def _resolve_counter_side(self, node, name, prop_value_name, bool_default):
-        """Resolve a bool/int/dynamic-ref counter refinement property
-        (incrsaturate, decrsaturate, incrthreshold) to a literal int, or
-        None if unset or unsupported (dynamic signal/field reference)."""
+    def _resolve_counter_side(
+        self, node, name, prop_value_name, bool_default
+    ) -> Optional[int]:
+        """Resolve a bool/int/dynamic-ref counter refinement property to a literal int.
+
+        Applies to incrsaturate, decrsaturate, incrthreshold. Returns
+        None if unset or unsupported (dynamic signal/field reference).
+        """
         value = node.get_property(prop_value_name)
         if value is None or value is False:
             return None
@@ -165,12 +177,14 @@ class PrintBSVSignal(HierarchyMixin, RDLListener):
         )
         return None
 
-    def _resolve_counter(self, node, attr, name):
-        """Resolve counter refinement properties (direction, incr/decr
-        value & width, saturation, threshold, overflow/underflow) using
-        the compiler's own is_up_counter/is_down_counter inference so the
-        generated interface matches the SystemRDL-specified direction and
-        default increment amount, not just a blanket incr()/decr() pair."""
+    def _resolve_counter(self, node, attr, name) -> None:
+        """Resolve counter refinement properties: direction, incr/decr value & width, saturation, threshold, overflow/underflow.
+
+        Uses the compiler's own is_up_counter/is_down_counter inference
+        so the generated interface matches the SystemRDL-specified
+        direction and default increment amount, not just a blanket
+        incr()/decr() pair.
+        """
         width = node.width
         max_val = (1 << width) - 1
 
@@ -327,4 +341,4 @@ if __name__ == "__main__":
         sys.exit(1)
     walker = RDLWalker(unroll=True)
     with open("bsv_test_signal.bsv", "w") as of:
-        walker.walk(root, PrintBSVSignal(of, test=True))
+        walker.walk(root, PrintBSVSignal(of, test=True, default_regwidth=32))
