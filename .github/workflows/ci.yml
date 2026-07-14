@@ -23,7 +23,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Fetch all tags
       run: git fetch --depth=1 --tags --force
@@ -69,7 +69,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up PDM
       uses: pdm-project/setup-pdm@v4
@@ -97,49 +97,44 @@ jobs:
     # claude1_test.py) silently skips instead of running. This job uses
     # the rtl_unit_docker image, which bundles bsc (via Nix) and Yosys
     # (from the librelane base image), so those tests actually execute.
+    #
+    # Deliberately NOT using the `container:` job directive: that makes
+    # GitHub Actions run its OWN runner-core lifecycle hooks (checkout,
+    # the post-job "determine container OS" cleanup step) *inside* this
+    # image via `docker exec`, which fails repeatedly against its
+    # Nix-based root (missing /lib64/ld-linux-x86-64.so.2, missing/
+    # mismatched libstdc++, git's dubious-ownership check, etc. -- see
+    # this job's git history for the full saga trying to patch the
+    # image to tolerate this). Running on the plain runner and invoking
+    # `docker run` ourselves sidesteps the whole problem class: GitHub's
+    # own hooks only ever run on the normal ubuntu-latest runner (full
+    # Node/glibc support natively); only our own commands run inside
+    # the Nix container.
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/dyu-copier/rtl_unit_tools:latest
-    env:
-      # GitHub Actions' runner-internal Node lifecycle hooks (e.g. the
-      # post-job "determine container OS" cleanup step) default to Node
-      # 24 as of the 2025-09-19 runner change, which fails against this
-      # image's Nix-based root (missing libc/interpreter paths a
-      # prebuilt glibc Node binary expects). Force the older Node 20
-      # runtime for these hooks instead, matching what already worked
-      # for this same image in other repos (e.g. hdl_unit) before that
-      # runner-side default changed.
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Mark workspace as a safe git directory
-      # In a container job the checkout is owned by the runner's UID but
-      # container processes may run as a different UID (e.g. root); git
-      # >=2.35.2's "dubious ownership" check then refuses to run ANY git
-      # command here (including the one pdm-backend needs below for SCM
-      # version detection), not just a benign warning.
-      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      uses: actions/checkout@v7
 
     - name: Fetch all tags
       # pyproject.toml derives this package's version from git (SCM) tags;
-      # actions/checkout@v4 does a shallow, tag-less clone by default, so
+      # actions/checkout@v7 does a shallow, tag-less clone by default, so
       # `pip install -e .` below fails to resolve a version without this
       # (same fix already used by the `quality` job above).
       run: git fetch --depth=1 --tags --force
 
-    - name: Install this package (editable) and test dependencies
+    - name: Run the full test suite inside rtl_unit_docker (bsc + yosys available)
       run: |
-        pip install -e .
-        pip install pytest pytest-mock
-
-    - name: Clone BlueCheck (needed by tests/formal_regression_test.py)
-      run: git clone --depth=1 https://github.com/CTSRD-CHERI/BlueCheck /tmp/BlueCheck
-
-    - name: Point tests/formal_regression_test.py at the BlueCheck checkout
-      run: echo "BLUECHECK_DIR=/tmp/BlueCheck" >> "$GITHUB_ENV"
-
-    - name: Run the full test suite (bsc + yosys available)
-      run: pytest -rP
+        docker run --rm -v "$PWD:/work" -w /work \
+          ghcr.io/dyu-copier/rtl_unit_tools:latest bash -c '
+            set -euo pipefail
+            # Bind-mounted files are owned by the host runner UID, not
+            # whatever this container runs as -- same dubious-ownership
+            # concern as before, just against a plain bind mount now
+            # instead of a GitHub-managed container checkout.
+            git config --global --add safe.directory /work
+            pip install -e .
+            pip install pytest pytest-mock
+            git clone --depth=1 https://github.com/CTSRD-CHERI/BlueCheck /tmp/BlueCheck
+            BLUECHECK_DIR=/tmp/BlueCheck pytest -rP
+          '
